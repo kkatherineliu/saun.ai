@@ -1,22 +1,90 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState, type SubmitEvent } from "react";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { Upload, ArrowRight, MoveRight, Star, Sparkles, Loader2, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-type RatingResult = {
-  overall_score: number;
-  breakdown: Record<string, number>;
-  summary: string;
-  suggestions: Array<{
-    id: string;
-    title: string;
-    why: string;
-    steps: string[];
-    impact: "low" | "medium" | "high";
-    effort: "low" | "medium" | "high";
-    tags: string[];
-  }>;
-  risks_or_tradeoffs?: string[];
+type AnalyzeResponse = {
+  data: {
+    summary: string;
+    labels: string[];
+    confidence: number;
+    safety_notes: string[];
+  };
 };
+
+const Assets = () =>{
+  return (
+    <section className="mt-32 w-full max-w-5xl pt-24 border-t border-neutral-300/50 relative z-10">
+    <div className="flex flex-col md:flex-row justify-between items-start gap-12">
+      
+      <div className="space-y-4">
+        <h3 className="font-serif text-3xl">Design Elements</h3>
+        <p className="text-neutral-500 text-sm max-w-xs">
+          Reusable components and typography styles matching the curated aesthetic.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-12 w-full max-w-2xl">
+        
+        {/* Buttons */}
+        <div className="space-y-6">
+          <p className="text-xs uppercase tracking-widest text-neutral-400 font-medium">Buttons</p>
+          
+          <div className="flex flex-col gap-4 items-start">
+            {/* Primary Button */}
+            <button className="group relative flex items-center justify-between gap-4 px-8 py-4 bg-[#121212] text-[#F3F1E7] rounded-none hover:bg-neutral-800 transition-all duration-300 w-full md:w-auto min-w-[200px]">
+              <span className="font-serif text-lg tracking-wide">Get Started</span>
+              <MoveRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+            </button>
+
+            {/* Secondary Button */}
+            <button className="group flex items-center gap-3 px-6 py-3 border border-[#121212] text-[#121212] rounded-full hover:bg-[#121212] hover:text-[#F3F1E7] transition-all duration-300">
+              <span className="text-sm font-medium tracking-wide">View Gallery</span>
+            </button>
+
+            {/* Text Link */}
+            <button className="group flex items-center gap-2 text-[#121212] hover:opacity-70 transition-opacity">
+              <span className="border-b border-black pb-0.5 text-sm uppercase tracking-widest">Learn More</span>
+              <ArrowRight className="w-4 h-4 -rotate-45 group-hover:rotate-0 transition-transform duration-300" />
+            </button>
+          </div>
+        </div>
+
+        {/* Typography & Cards */}
+        <div className="space-y-6">
+          <p className="text-xs uppercase tracking-widest text-neutral-400 font-medium">Typography & Surface</p>
+          
+          <div className="p-8 bg-white border border-neutral-100 shadow-sm hover:shadow-md transition-shadow duration-300">
+            <div className="flex items-center gap-2 mb-4 text-neutral-400">
+              <Sparkles className="w-4 h-4" />
+              <span className="text-xs uppercase tracking-wider">Feature Card</span>
+            </div>
+            <h4 className="font-serif text-2xl mb-2">Modern Minimalist</h4>
+            <p className="text-neutral-500 text-sm leading-relaxed">
+              Clean lines, neutral palette, and functional furniture design.
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+  )
+}
+
+const sampleRooms = [
+  "/sample-rooms/bedroom1.jpg",
+  "/sample-rooms/bedroom2.jpg",
+  "/sample-rooms/bedroom3.jpg",
+  "/sample-rooms/bedroom5.jpg",
+];
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+const DESIGN_API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:5001";
+const DESIGN_SESSION_KEY = "saun-design-session";
 
 type JobStatus = {
   job_id: string;
@@ -28,350 +96,303 @@ type JobStatus = {
 const DEFAULT_CRITERIA = ["organization", "lighting", "spacing", "color_harmony", "cleanliness"];
 
 export default function Home() {
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5001";
-
+  const router = useRouter();
+  const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [originalUrl, setOriginalUrl] = useState<string | null>(null);
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
 
-  const [rating, setRating] = useState<RatingResult | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
 
-  const [userExtra, setUserExtra] = useState<string>("");
-  const [numVariations, setNumVariations] = useState<number>(2);
-
-  const [job, setJob] = useState<JobStatus | null>(null);
-  const [generated, setGenerated] = useState<string[]>([]);
-
-  const pollTimer = useRef<NodeJS.Timeout | null>(null);
-
-  const originalAbsolute = useMemo(() => {
-    if (!originalUrl) return null;
-    return originalUrl.startsWith("http") ? originalUrl : `${apiBase}${originalUrl}`;
-  }, [originalUrl, apiBase]);
-
-  const generatedAbsolute = useMemo(() => {
-    return generated.map((u) => (u.startsWith("http") ? u : `${apiBase}${u}`));
-  }, [generated, apiBase]);
-
-  const [origin, setOrigin] = useState<string>("");
-
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
-
-  function resetAll() {
-    setBusy(null);
-    setSessionId(null);
-    setOriginalUrl(null);
-    setRating(null);
-    setSelectedIds(new Set());
-    setUserExtra("");
-    setNumVariations(2);
-    setJob(null);
-    setGenerated([]);
-  }
-
-  async function upload() {
-    if (!file) return alert("Pick an image first.");
-    setBusy("Uploading...");
-
-    try {
-      const form = new FormData();
-      form.append("image", file);
-
-      const res = await fetch(`${apiBase}/api/sessions`, {
-        method: "POST",
-        body: form,
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error?.message || "Upload failed");
-
-      setSessionId(data.session_id);
-      setOriginalUrl(data.original_image_url);
-      setRating(null);
-      setSelectedIds(new Set());
-      setJob(null);
-      setGenerated([]);
-    } catch (e: any) {
-      alert(e.message || String(e));
-    } finally {
-      setBusy(null);
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const dropped = e.dataTransfer.files?.[0];
+    if (dropped?.type.startsWith("image/")) {
+      setFile(dropped);
+      setError(null);
     }
-  }
+  };
 
-  async function rate() {
-    if (!sessionId) return alert("Upload first.");
-    setBusy("Rating with Gemini...");
-
-    try {
-      const res = await fetch(`${apiBase}/api/sessions/${sessionId}/rate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ criteria: DEFAULT_CRITERIA }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error?.message || "Rate failed");
-
-      setRating(data);
-      // default-select top 2 suggestions
-      const top = (data?.suggestions || []).slice(0, 2).map((s: any) => s.id);
-      setSelectedIds(new Set(top));
-    } catch (e: any) {
-      alert(e.message || String(e));
-    } finally {
-      setBusy(null);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const chosen = e.target.files?.[0];
+    if (chosen) {
+      setFile(chosen);
+      setError(null);
     }
-  }
+    e.target.value = "";
+  };
 
-  function startPolling(jobId: string) {
-    if (pollTimer.current) clearInterval(pollTimer.current);
+  const handleSubmit = async (event: SubmitEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+    if (!file) {
+      setError("Please select an image first.");
+      return;
+    }
 
-    pollTimer.current = setInterval(async () => {
-      try {
-        const res = await fetch(`${apiBase}/api/jobs/${jobId}`);
-        const data = (await res.json()) as JobStatus;
-        if (!res.ok) throw new Error((data as any)?.error?.message || "Job poll failed");
-
-        setJob(data);
-
-        if (data.status === "done") {
-          setGenerated(data.generated_images || []);
-          if (pollTimer.current) clearInterval(pollTimer.current);
-          pollTimer.current = null;
-        } else if (data.status === "error") {
-          if (pollTimer.current) clearInterval(pollTimer.current);
-          pollTimer.current = null;
-        }
-      } catch (e) {
-        // ignore occasional poll errors
+    const formData = new FormData();
+    formData.append("image", file);
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/analyze-photo`, {
+        method: "POST",
+        body: formData,
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setError((payload as { error?: string })?.error ?? "Request failed.");
+        return;
       }
-    }, 1200);
-  }
-
-  async function generate() {
-    if (!sessionId) return alert("Upload + rate first.");
-    if (!rating) return alert("Rate first.");
-    if (selectedIds.size === 0) return alert("Select at least one suggestion.");
-
-    setBusy("Starting generation...");
-    try {
-      const res = await fetch(`${apiBase}/api/sessions/${sessionId}/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          selected_suggestion_ids: Array.from(selectedIds),
-          user_prompt_extra: userExtra,
-          num_variations: numVariations,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error?.message || "Generate failed");
-
-      setJob({ job_id: data.job_id, status: data.status, generated_images: [], error: null });
-      setGenerated([]);
-      startPolling(data.job_id);
-    } catch (e: any) {
-      alert(e.message || String(e));
+      const data = (payload as AnalyzeResponse).data;
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("saun-analyze-result", JSON.stringify(data));
+        // Create design session with same image so design page can skip upload
+        try {
+          const designForm = new FormData();
+          designForm.append("image", file);
+          const designRes = await fetch(`${DESIGN_API_BASE}/api/sessions`, {
+            method: "POST",
+            body: designForm,
+          });
+          const designData = await designRes.json();
+          if (designRes.ok && designData.session_id) {
+            sessionStorage.setItem(
+              DESIGN_SESSION_KEY,
+              JSON.stringify({
+                session_id: designData.session_id,
+                original_image_url: designData.original_image_url ?? null,
+              })
+            );
+          }
+        } catch {
+          // design session optional; design page can still show upload
+        }
+        router.push("/design");
+      }
+    } catch {
+      setError("Could not reach backend. Ensure the API is running.");
     } finally {
-      setBusy(null);
+      setLoading(false);
     }
-  }
+
+
+  };
+
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    return () => {
-      if (pollTimer.current) clearInterval(pollTimer.current);
-    };
-  }, []);
+    if (!file) {
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return url;
+    });
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  const clearFile = () => {
+    setFile(null);
+    setError(null);
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    inputRef.current?.form?.reset();
+  };
 
   return (
-    <main style={{ maxWidth: 980, margin: "0 auto", padding: 24, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
-      <h1 style={{ fontSize: 28, marginBottom: 8 }}>Room Rater (Next.js Test UI)</h1>
-      <p style={{ marginTop: 0, opacity: 0.8 }}>
-        Backend: <code>{apiBase}</code>
-      </p>
+    <main className="min-h-screen flex flex-col items-center justify-center p-8 md:p-24 relative overflow-hidden">
+      
+      {/* Decorative Background Elements */}
+      <div className="absolute inset-0 w-full h-full pointer-events-none z-0 overflow-hidden">
+        {/* Bold Opinionated Curves */}
+        <svg className="absolute inset-0 w-full h-full text-black" viewBox="0 0 100 100" preserveAspectRatio="none">
+          {/* Large sweeping curve from bottom left */}
+          <path 
+            d="M-10,100 C20,40 50,80 100,20" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="0.3" 
+            className="opacity-100"
+          />
+          {/* Secondary architectural curve */}
+          <path 
+            d="M0,60 C30,70 60,30 110,40" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="0.2" 
+            className="opacity-100"
+          />
+          {/* Sharp contrast line */}
+          <path 
+            d="M70,0 C70,30 90,60 90,100" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="0.4" 
+            className="opacity-100"
+          />
+        </svg>
+      </div>
 
-      <section style={cardStyle}>
-        <h2 style={h2Style}>1) Upload a room photo</h2>
+      {/* Horizontal Image Strip (Background Center) */}
+      <div className="absolute top-1/2 left-0 -translate-y-1/2 w-full overflow-hidden opacity-20 pointer-events-none z-0 mix-blend-multiply grayscale-[20%]">
+        <div className="flex gap-8 animate-in fade-in duration-1000 min-w-max px-8">
+          {[...sampleRooms, ...sampleRooms].map((src, i) => (
+            <div key={i} className="relative w-64 h-48 md:w-96 md:h-72 shrink-0 grayscale hover:grayscale-0 transition-all duration-700">
+               <Image 
+                 src={src} 
+                 alt={`Room Style ${i}`}
+                 fill
+                 className="object-cover rounded-sm"
+                 sizes="(max-width: 768px) 100vw, 33vw"
+               />
+            </div>
+          ))}
+        </div>
+      </div>
 
-        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+      {/* Main Content */}
+      <div className="z-10 w-full max-w-4xl flex flex-col items-center text-center space-y-12 relative">
+        
+        {/* Soft Glow Cutout */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200%] h-[150%] -z-10 pointer-events-none">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_closest-side,var(--background)_60%,transparent_100%)] opacity-95 blur-3xl" />
+        </div>
+
+        {/* Header */}
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+          <p className="uppercase tracking-[0.2em] text-sm font-medium text-neutral-500">
+            Interior Design AI
+          </p>
+          <h1 className="font-serif text-6xl md:text-8xl lg:text-9xl leading-[0.9] tracking-tight text-foreground">
+            Curate <br />
+            <span className="italic font-light">Your Space</span>
+          </h1>
+          <p className="pt-4 max-w-md mx-auto text-lg text-neutral-600 font-sans leading-relaxed">
+            Drive decisions and iterate quickly on interior design
+          </p>
+        </div>
+
+        {/* Upload Component */}
+        <form onSubmit={handleSubmit} className="w-full max-w-lg mx-auto flex flex-col items-center gap-6">
           <input
+            ref={inputRef}
             type="file"
             accept="image/*"
-            onChange={(e) => {
-              const f = e.target.files?.[0] || null;
-              setFile(f);
-            }}
+            onChange={handleFileChange}
+            className="hidden"
+            aria-hidden
           />
-          <button disabled={!file || !!busy} onClick={upload} style={buttonStyle}>
-            Upload
-          </button>
-          <button disabled={!!busy} onClick={resetAll} style={buttonSecondaryStyle}>
-            Reset
-          </button>
-          {busy && <span style={{ opacity: 0.8 }}>{busy}</span>}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => inputRef.current?.click()}
+            onKeyDown={(e) => e.key === "Enter" && inputRef.current?.click()}
+            className={cn(
+              "w-full group cursor-pointer transition-all duration-500 ease-out relative",
+              "border-2 border-dashed rounded-2xl p-12",
+              isDragging
+                ? "border-black bg-white/80 scale-[1.02] shadow-2xl"
+                : "border-neutral-900/20 hover:border-neutral-900 bg-white/40 hover:bg-white/60 backdrop-blur-sm hover:shadow-xl"
+            )}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+          {/* Accent corners */}
+          <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-black -translate-x-1 -translate-y-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-black translate-x-1 -translate-y-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-black -translate-x-1 translate-y-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-black translate-x-1 translate-y-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+          <div className="flex flex-col items-center space-y-6">
+            {file ? (
+              <>
+                <div className="relative">
+                  <img
+                    src={previewUrl ?? undefined}
+                    alt="Preview"
+                    className="max-h-32 w-auto rounded-lg object-cover border border-neutral-200 shadow-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); clearFile(); }}
+                    className="absolute -top-2 -right-2 rounded-full bg-neutral-900 text-white p-1 hover:bg-black transition-colors"
+                    aria-label="Remove image"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <p className="font-sans text-sm text-neutral-600 truncate max-w-full px-4">{file.name}</p>
+              </>
+            ) : (
+              <>
+                <div className={cn(
+                  "p-5 rounded-full border-2 duration-300 group-hover:scale-110",
+                  "border-neutral-900/10 bg-white shadow-sm group-hover:border-neutral-900 group-hover:shadow-md"
+                )}>
+                  <Upload className="w-8 h-8 text-neutral-600 group-hover:text-black" strokeWidth={1.5} />
+                </div>
+                <div className="space-y-2">
+                  <p className="font-serif text-3xl text-neutral-900">Upload Photo</p>
+                  <p className="text-sm text-neutral-500 font-sans">
+                    Drag & Drop or Click to Browse
+                  </p>
+                </div>
+                
+              </>
+            )}
+          </div>
         </div>
 
-        {sessionId && (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontSize: 14, opacity: 0.85 }}>
-              <b>Session:</b> <code>{sessionId}</code>
-            </div>
-          </div>
-        )}
-
-        {originalAbsolute && (
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 14, marginBottom: 6, opacity: 0.85 }}>Original image</div>
-            <img
-              src={originalAbsolute}
-              alt="Original"
-              style={{ width: "100%", maxHeight: 420, objectFit: "contain", borderRadius: 12, border: "1px solid #eee" }}
-            />
-          </div>
-        )}
-      </section>
-
-      <section style={cardStyle}>
-        <h2 style={h2Style}>2) Rate with Gemini</h2>
-        <button disabled={!sessionId || !!busy} onClick={rate} style={buttonStyle}>
-          Rate (0–10)
-        </button>
-
-        {rating && (
-          <div style={{ marginTop: 14 }}>
-            <div style={{ display: "flex", gap: 12, alignItems: "baseline", flexWrap: "wrap" }}>
-              <div style={{ fontSize: 20 }}>
-                Overall: <b>{rating.overall_score}</b>/10
-              </div>
-              <div style={{ opacity: 0.8 }}>{rating.summary}</div>
-            </div>
-
-            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-              {Object.entries(rating.breakdown || {}).map(([k, v]) => (
-                <div key={k} style={miniCardStyle}>
-                  <div style={{ fontSize: 12, opacity: 0.8, textTransform: "capitalize" }}>{k.replaceAll("_", " ")}</div>
-                  <div style={{ fontSize: 18, fontWeight: 700 }}>{v}</div>
-                </div>
-              ))}
-            </div>
-
-            <h3 style={{ marginTop: 16, marginBottom: 8 }}>Suggestions (select what to apply)</h3>
-            <div style={{ display: "grid", gap: 10 }}>
-              {(rating.suggestions || []).map((s) => {
-                const checked = selectedIds.has(s.id);
-                return (
-                  <label key={s.id} style={{ ...miniCardStyle, cursor: "pointer" }}>
-                    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => {
-                          setSelectedIds((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(s.id)) next.delete(s.id);
-                            else next.add(s.id);
-                            return next;
-                          });
-                        }}
-                        style={{ marginTop: 4 }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                          <div style={{ fontWeight: 700 }}>
-                            {s.title} <span style={{ opacity: 0.6, fontWeight: 500 }}>({s.id})</span>
-                          </div>
-                          <div style={{ fontSize: 12, opacity: 0.75 }}>
-                            impact: <b>{s.impact}</b> • effort: <b>{s.effort}</b>
-                          </div>
-                        </div>
-                        <div style={{ marginTop: 6, opacity: 0.85 }}>{s.why}</div>
-                        {s.steps?.length ? (
-                          <ul style={{ marginTop: 8, marginBottom: 0, paddingLeft: 18, opacity: 0.9 }}>
-                            {s.steps.slice(0, 4).map((st, idx) => (
-                              <li key={idx}>{st}</li>
-                            ))}
-                          </ul>
-                        ) : null}
-                      </div>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </section>
-
-      <section style={cardStyle}>
-        <h2 style={h2Style}>3) Generate redesigned images (Nano Banana)</h2>
-
-        <div style={{ display: "grid", gap: 10 }}>
-          <div style={{ display: "grid", gap: 6 }}>
-            <label style={{ fontSize: 14, opacity: 0.85 }}>Extra style prompt (optional)</label>
-            <input
-              value={userExtra}
-              onChange={(e) => setUserExtra(e.target.value)}
-              placeholder='e.g. "Scandinavian minimal, warm natural light"'
-              style={inputStyle}
-            />
-          </div>
-
-          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-            <label style={{ fontSize: 14, opacity: 0.85 }}>Variations:</label>
-            <input
-              type="number"
-              min={1}
-              max={4}
-              value={numVariations}
-              onChange={(e) => setNumVariations(Number(e.target.value))}
-              style={{ ...inputStyle, width: 90 }}
-            />
-            <button disabled={!rating || selectedIds.size === 0 || !!busy} onClick={generate} style={buttonStyle}>
-              Generate
+        {file && (
+          <>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex items-center gap-3 px-8 py-4 bg-neutral-900 text-white rounded-full font-medium text-sm hover:bg-black hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-60 disabled:hover:scale-100"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="tracking-wider">Analyzing…</span>
+                </>
+              ) : (
+                <>
+                  <span className="tracking-wider">Analyze Photo</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
-          </div>
+          </>
+        )}
+      </form>
 
-          {job && (
-            <div style={{ fontSize: 14, opacity: 0.9 }}>
-              <b>Job:</b> <code>{job.job_id}</code> • <b>Status:</b> {job.status}
-              {job.error ? (
-                <div style={{ marginTop: 6, color: "crimson" }}>
-                  <b>Error:</b> {job.error}
-                </div>
-              ) : null}
-            </div>
-          )}
-
-          {generatedAbsolute.length > 0 && (
-            <div style={{ marginTop: 10 }}>
-              <h3 style={{ marginTop: 0 }}>Generated images</h3>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
-                {generatedAbsolute.map((u, idx) => (
-                  <a key={u} href={u} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
-                    <div style={miniCardStyle}>
-                      <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Variant {idx + 1}</div>
-                      <img src={u} alt={`Generated ${idx + 1}`} style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 12, border: "1px solid #eee" }} />
-                      <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-                        Click to open full size
-                      </div>
-                    </div>
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </section>
-
-      <footer style={{ marginTop: 24, opacity: 0.7, fontSize: 13 }}>
-        Tip: if images don’t show, make sure your Flask backend CORS allows <code>{origin}</code> and that Flask is running on <code>localhost:5001</code>.
-      </footer>
+      {error && (
+        <p className="w-full max-w-lg mx-auto rounded-xl border border-red-200 bg-red-50/80 px-4 py-3 text-sm text-red-700">
+          {error}
+        </p>
+      )}
+      </div>
     </main>
   );
 }
