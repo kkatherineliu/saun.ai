@@ -34,3 +34,62 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Flask Backend for Room Rater
+
+The app has a Next.js frontend (`localhost:3000`) and Flask backend (`localhost:5001`).
+
+### 1. Backend setup
+
+```bash
+cd backend
+python -m venv .venv
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env
+```
+
+Then set your key in `backend/.env`:
+
+```env
+GEMINI_API_KEY=your_key_here
+```
+
+### 2. Run backend
+
+```bash
+cd backend
+python app.py
+```
+
+Health check:
+
+```bash
+curl http://localhost:5001/api/health
+```
+
+### 3. Run frontend
+
+From repo root:
+
+```bash
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+Optional frontend env override (repo root `.env.local`):
+
+```env
+NEXT_PUBLIC_API_BASE=http://localhost:5001
+```
+
+### 4. Active API endpoints
+
+- `POST /api/sessions` (upload image)
+- `POST /api/sessions/:session_id/rate`
+- `POST /api/sessions/:session_id/generate`
+- `GET /api/jobs/:job_id`
+- `GET /api/sessions/:session_id`
