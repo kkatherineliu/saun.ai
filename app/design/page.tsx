@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { cn } from "@/lib/utils";
 
-const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:5001";
+const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001";
 const DESIGN_SESSION_KEY = "saun-design-session";
 
 type Suggestion = {
@@ -32,7 +32,6 @@ type JobStatus = {
 };
 
 export default function DesignPage() {
-  const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [originalUrl, setOriginalUrl] = useState<string | null>(null);
@@ -42,9 +41,10 @@ export default function DesignPage() {
   const [numVariations, setNumVariations] = useState(2);
   const [job, setJob] = useState<JobStatus | null>(null);
   const [generated, setGenerated] = useState<string[]>([]);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Restore session passed from landing page (after Analyze)
+  // Restore session passed from home page (after Analyze Photo)
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -61,6 +61,8 @@ export default function DesignPage() {
       }
     } catch {
       // ignore
+    } finally {
+      setSessionLoaded(true);
     }
   }, []);
 
@@ -85,30 +87,7 @@ export default function DesignPage() {
     setNumVariations(2);
     setJob(null);
     setGenerated([]);
-    setFile(null);
   }, []);
-
-  const upload = useCallback(async () => {
-    if (!file) return alert("Pick an image first.");
-    setBusy("Uploading...");
-    try {
-      const form = new FormData();
-      form.append("image", file);
-      const res = await fetch(`${apiBase}/api/sessions`, { method: "POST", body: form });
-      const data = await res.json();
-      if (!res.ok) throw new Error((data?.error?.message as string) ?? "Upload failed");
-      setSessionId(data.session_id);
-      setOriginalUrl(data.original_image_url);
-      setRating(null);
-      setSelectedIds(new Set());
-      setJob(null);
-      setGenerated([]);
-    } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(null);
-    }
-  }, [file]);
 
   const rate = useCallback(async () => {
     if (!sessionId) return alert("Upload first.");
@@ -215,13 +194,30 @@ export default function DesignPage() {
             </Link>
           </div>
           <h1 className="font-serif text-4xl tracking-tight text-foreground">Design</h1>
-          {/* 1) Upload — skipped when session passed from landing */}
-          <section className={cardClass}>
-            <h2 className={h2Class}>1) Room photo</h2>
-            {sessionId && originalAbsolute ? (
-              <>
+
+          {!sessionLoaded ? (
+            <p className="text-neutral-500">Loading…</p>
+          ) : !sessionId || !originalAbsolute ? (
+            <section className={cardClass}>
+              <h2 className={h2Class}>No image yet</h2>
+              <p className="text-neutral-600">
+                Upload a room photo on the home page and click <strong>Analyze Photo</strong> to
+                bring it here for rating and redesign.
+              </p>
+              <Link
+                href="/"
+                className={cn(btnClass, "mt-4 inline-block")}
+              >
+                Go to home page
+              </Link>
+            </section>
+          ) : (
+            <>
+              {/* 1) Room photo (from home page) */}
+              <section className={cardClass}>
+                <h2 className={h2Class}>1) Room photo</h2>
                 <p className="text-sm text-neutral-600">
-                  Using the image you uploaded on the landing page. Continue to Rate and Generate below.
+                  Using the image you uploaded and analyzed on the home page. Continue to Rate and Generate below.
                 </p>
                 <p className="mt-2 text-xs text-neutral-500">
                   <strong>Session:</strong> <code className="rounded bg-neutral-100 px-1">{sessionId}</code>
@@ -239,56 +235,9 @@ export default function DesignPage() {
                   onClick={resetAll}
                   className={cn(btnSecondaryClass, "mt-4")}
                 >
-                  Start over (upload a different image)
+                  Start over (upload a different image on home)
                 </button>
-              </>
-            ) : (
-              <>
-                <div className="flex flex-wrap items-center gap-3">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                    className="text-sm text-neutral-700 file:mr-3 file:rounded-full file:border-0 file:bg-neutral-900 file:px-4 file:py-2 file:text-sm file:text-white file:hover:bg-black"
-                  />
-                  <button
-                    type="button"
-                    disabled={!file || !!busy}
-                    onClick={upload}
-                    className={btnClass}
-                  >
-                    Upload
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!!busy}
-                    onClick={resetAll}
-                    className={btnSecondaryClass}
-                  >
-                    Reset
-                  </button>
-                  {busy && (
-                    <span className="text-sm text-neutral-500">{busy}</span>
-                  )}
-                </div>
-                {sessionId && (
-                  <p className="mt-3 text-sm text-neutral-600">
-                    <strong>Session:</strong> <code className="rounded bg-neutral-100 px-1">{sessionId}</code>
-                  </p>
-                )}
-                {originalAbsolute && (
-                  <div className="mt-4">
-                    <p className="mb-2 text-sm text-neutral-600">Original image</p>
-                    <img
-                      src={originalAbsolute}
-                      alt="Original room"
-                      className="w-full max-h-[420px] rounded-xl border border-neutral-200 object-contain"
-                    />
-                  </div>
-                )}
-              </>
-            )}
-          </section>
+              </section>
 
           {/* 2) Rate */}
           <section className={cardClass}>
@@ -463,6 +412,8 @@ export default function DesignPage() {
               </div>
             )}
           </section>
+            </>
+          )}
         </div>
       </main>
 

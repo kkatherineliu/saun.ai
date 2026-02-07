@@ -6,15 +6,6 @@ import Image from "next/image";
 import { Upload, ArrowRight, MoveRight, Star, Sparkles, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type AnalyzeResponse = {
-  data: {
-    summary: string;
-    labels: string[];
-    confidence: number;
-    safety_notes: string[];
-  };
-};
-
 const Assets = () =>{
   return (
     <section className="mt-32 w-full max-w-5xl pt-24 border-t border-neutral-300/50 relative z-10">
@@ -82,26 +73,45 @@ const sampleRooms = [
   "/sample-rooms/bedroom5.jpg",
 ];
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
-const DESIGN_API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:5001";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001";
 const DESIGN_SESSION_KEY = "saun-design-session";
-
-type JobStatus = {
-  job_id: string;
-  status: "queued" | "running" | "done" | "error";
-  generated_images: string[];
-  error: string | null;
-};
-
-const DEFAULT_CRITERIA = ["organization", "lighting", "spacing", "color_harmony", "cleanliness"];
 
 export default function Home() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return url;
+    });
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  const clearFile = () => {
+    setFile(null);
+    setError(null);
+    setPreviewUrl((p) => {
+      if (p) URL.revokeObjectURL(p);
+      return null;
+    });
+    inputRef.current?.form?.reset();
+  };
+
+  const imagePreviewSrc = file && previewUrl != null ? previewUrl : undefined;
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -147,76 +157,36 @@ export default function Home() {
     formData.append("image", file);
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/api/analyze-photo`, {
+      const res = await fetch(`${API_BASE}/api/sessions`, {
         method: "POST",
         body: formData,
       });
-      const payload = await response.json();
-      if (!response.ok) {
-        setError((payload as { error?: string })?.error ?? "Request failed.");
+      const data = await res.json();
+      if (!res.ok) {
+        const msg = (data as { error?: { message?: string } })?.error?.message ?? "Upload failed.";
+        setError(msg);
         return;
       }
-      const data = (payload as AnalyzeResponse).data;
+      if (!(data as { session_id?: string }).session_id) {
+        setError("Invalid response from server.");
+        return;
+      }
+
       if (typeof window !== "undefined") {
-        sessionStorage.setItem("saun-analyze-result", JSON.stringify(data));
-        // Create design session with same image so design page can skip upload
-        try {
-          const designForm = new FormData();
-          designForm.append("image", file);
-          const designRes = await fetch(`${DESIGN_API_BASE}/api/sessions`, {
-            method: "POST",
-            body: designForm,
-          });
-          const designData = await designRes.json();
-          if (designRes.ok && designData.session_id) {
-            sessionStorage.setItem(
-              DESIGN_SESSION_KEY,
-              JSON.stringify({
-                session_id: designData.session_id,
-                original_image_url: designData.original_image_url ?? null,
-              })
-            );
-          }
-        } catch {
-          // design session optional; design page can still show upload
-        }
+        sessionStorage.setItem(
+          DESIGN_SESSION_KEY,
+          JSON.stringify({
+            session_id: (data as { session_id: string }).session_id,
+            original_image_url: (data as { original_image_url?: string }).original_image_url ?? null,
+          })
+        );
         router.push("/design");
       }
     } catch {
-      setError("Could not reach backend. Ensure the API is running.");
+      setError("Could not reach server. Ensure the backend is running on " + API_BASE);
     } finally {
       setLoading(false);
     }
-
-
-  };
-
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!file) {
-      setPreviewUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setPreviewUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return url;
-    });
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
-
-  const clearFile = () => {
-    setFile(null);
-    setError(null);
-    setPreviewUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return null;
-    });
-    inputRef.current?.form?.reset();
   };
 
   return (
@@ -329,7 +299,7 @@ export default function Home() {
               <>
                 <div className="relative">
                   <img
-                    src={previewUrl ?? undefined}
+                    src={imagePreviewSrc}
                     alt="Preview"
                     className="max-h-32 w-auto rounded-lg object-cover border border-neutral-200 shadow-sm"
                   />
