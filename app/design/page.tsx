@@ -472,6 +472,5 @@ export default function DesignPage() {
         placeholder='e.g. "Scandinavian minimal, warm natural light"'
         label="Extra style prompt (optional)"
       />
-    </div>
   );
 }

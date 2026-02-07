@@ -86,6 +86,15 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
 const DESIGN_API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:5001";
 const DESIGN_SESSION_KEY = "saun-design-session";
 
+type JobStatus = {
+  job_id: string;
+  status: "queued" | "running" | "done" | "error";
+  generated_images: string[];
+  error: string | null;
+};
+
+const DEFAULT_CRITERIA = ["organization", "lighting", "spacing", "color_harmony", "cleanliness"];
+
 export default function Home() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -387,3 +396,45 @@ export default function Home() {
     </main>
   );
 }
+
+const cardStyle: React.CSSProperties = {
+  border: "1px solid #eaeaea",
+  borderRadius: 16,
+  padding: 16,
+  marginTop: 14,
+  boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+};
+
+const miniCardStyle: React.CSSProperties = {
+  border: "1px solid #eee",
+  borderRadius: 14,
+  padding: 12,
+  background: "white",
+};
+
+const h2Style: React.CSSProperties = { marginTop: 0, marginBottom: 10, fontSize: 18 };
+
+const buttonStyle: React.CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: 12,
+  border: "1px solid #111",
+  background: "#111",
+  color: "white",
+  cursor: "pointer",
+};
+
+const buttonSecondaryStyle: React.CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: 12,
+  border: "1px solid #ddd",
+  background: "white",
+  color: "#111",
+  cursor: "pointer",
+};
+
+const inputStyle: React.CSSProperties = {
+  padding: "10px 12px",
+  borderRadius: 12,
+  border: "1px solid #ddd",
+  width: "100%",
+};
