@@ -34,3 +34,69 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Flask Backend for Gemini Photo Analysis
+
+The project includes a Flask backend in `backend/` that accepts an image, sends it to Gemini, and returns a structured JSON response.
+
+### 1. Backend setup
+
+```bash
+cd backend
+python -m venv .venv
+# Windows PowerShell:
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env
+```
+
+Set `GEMINI_API_KEY` in `backend/.env`.
+
+### 2. Run backend
+
+```bash
+cd backend
+flask --app app run --port 5000
+```
+
+Health check:
+
+```bash
+curl http://localhost:5000/health
+```
+
+### 3. API endpoint
+
+`POST /api/analyze-photo`
+
+- Content type: `multipart/form-data`
+- Required field: `image` (file)
+- Optional field: `prompt` (string)
+
+Example response:
+
+```json
+{
+  "data": {
+    "summary": "A cat sitting on a couch.",
+    "labels": ["cat", "couch", "indoor"],
+    "confidence": 0.92,
+    "safety_notes": []
+  }
+}
+```
+
+### 4. Frontend fetch example (Next.js)
+
+```ts
+const formData = new FormData();
+formData.append("image", fileInput.files[0]);
+formData.append("prompt", "Describe this image for a product catalog.");
+
+const res = await fetch("http://localhost:5000/api/analyze-photo", {
+  method: "POST",
+  body: formData,
+});
+
+const data = await res.json();
+```
