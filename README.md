@@ -35,68 +35,61 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 
-## Flask Backend for Gemini Photo Analysis
+## Flask Backend for Room Rater
 
-The project includes a Flask backend in `backend/` that accepts an image, sends it to Gemini, and returns a structured JSON response.
+The app has a Next.js frontend (`localhost:3000`) and Flask backend (`localhost:5001`).
 
 ### 1. Backend setup
 
 ```bash
 cd backend
 python -m venv .venv
-# Windows PowerShell:
+# Windows PowerShell
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 copy .env.example .env
 ```
 
-Set `GEMINI_API_KEY` in `backend/.env`.
+Then set your key in `backend/.env`:
+
+```env
+GEMINI_API_KEY=your_key_here
+```
 
 ### 2. Run backend
 
 ```bash
 cd backend
-flask --app app run --port 5000
+python app.py
 ```
 
 Health check:
 
 ```bash
-curl http://localhost:5000/health
+curl http://localhost:5001/api/health
 ```
 
-### 3. API endpoint
+### 3. Run frontend
 
-`POST /api/analyze-photo`
+From repo root:
 
-- Content type: `multipart/form-data`
-- Required field: `image` (file)
-- Optional field: `prompt` (string)
-
-Example response:
-
-```json
-{
-  "data": {
-    "summary": "A cat sitting on a couch.",
-    "labels": ["cat", "couch", "indoor"],
-    "confidence": 0.92,
-    "safety_notes": []
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-### 4. Frontend fetch example (Next.js)
+Open `http://localhost:3000`.
 
-```ts
-const formData = new FormData();
-formData.append("image", fileInput.files[0]);
-formData.append("prompt", "Describe this image for a product catalog.");
+Optional frontend env override (repo root `.env.local`):
 
-const res = await fetch("http://localhost:5000/api/analyze-photo", {
-  method: "POST",
-  body: formData,
-});
-
-const data = await res.json();
+```env
+NEXT_PUBLIC_API_BASE=http://localhost:5001
 ```
+
+### 4. Active API endpoints
+
+- `POST /api/sessions` (upload image)
+- `POST /api/sessions/:session_id/rate`
+- `POST /api/sessions/:session_id/generate`
+- `GET /api/jobs/:job_id`
+- `GET /api/sessions/:session_id`
