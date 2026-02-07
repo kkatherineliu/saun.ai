@@ -83,6 +83,8 @@ const sampleRooms = [
 ];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+const DESIGN_API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:5001";
+const DESIGN_SESSION_KEY = "saun-design-session";
 
 export default function Home() {
   const router = useRouter();
@@ -148,6 +150,27 @@ export default function Home() {
       const data = (payload as AnalyzeResponse).data;
       if (typeof window !== "undefined") {
         sessionStorage.setItem("saun-analyze-result", JSON.stringify(data));
+        // Create design session with same image so design page can skip upload
+        try {
+          const designForm = new FormData();
+          designForm.append("image", file);
+          const designRes = await fetch(`${DESIGN_API_BASE}/api/sessions`, {
+            method: "POST",
+            body: designForm,
+          });
+          const designData = await designRes.json();
+          if (designRes.ok && designData.session_id) {
+            sessionStorage.setItem(
+              DESIGN_SESSION_KEY,
+              JSON.stringify({
+                session_id: designData.session_id,
+                original_image_url: designData.original_image_url ?? null,
+              })
+            );
+          }
+        } catch {
+          // design session optional; design page can still show upload
+        }
         router.push("/design");
       }
     } catch {
