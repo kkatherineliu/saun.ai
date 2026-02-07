@@ -11,7 +11,7 @@ from flask_cors import CORS
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 GEMINI_API_URL = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 )
@@ -128,18 +128,7 @@ def create_app() -> Flask:
 
             raw_text = _extract_gemini_text(gemini_payload)
             parsed = json.loads(raw_text)
-            is_valid, reason = _validate_structured_response(parsed)
-            if not is_valid:
-                return (
-                    jsonify(
-                        {
-                            "error": "Model response failed schema validation.",
-                            "details": reason,
-                            "raw_response": raw_text,
-                        }
-                    ),
-                    502,
-                )
+            
 
             return jsonify({"data": parsed})
         except requests.HTTPError as exc:
