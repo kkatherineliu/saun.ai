@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { Upload, ArrowRight, MoveRight, Star, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const Assets = () =>{
   return (
-    <section className="mt-32 w-full max-w-5xl pt-24 border-t border-neutral-300/50">
+    <section className="mt-32 w-full max-w-5xl pt-24 border-t border-neutral-300/50 relative z-10">
     <div className="flex flex-col md:flex-row justify-between items-start gap-12">
       
       <div className="space-y-4">
@@ -63,6 +64,13 @@ const Assets = () =>{
   </section>
   )
 }
+
+const sampleRooms = [
+  "/sample-rooms/bedroom1.jpg",
+  "/sample-rooms/bedroom2.jpg",
+  "/sample-rooms/bedroom3.jpg",
+  "/sample-rooms/bedroom5.jpg",
+];
 
 export default function Home() {
   const [isDragging, setIsDragging] = useState(false);
@@ -125,6 +133,23 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Horizontal Image Strip (Background Center) */}
+      <div className="absolute top-1/2 left-0 -translate-y-1/2 w-full overflow-hidden opacity-20 pointer-events-none z-0 mix-blend-multiply grayscale-[20%]">
+        <div className="flex gap-8 animate-in fade-in duration-1000 min-w-max px-8">
+          {[...sampleRooms, ...sampleRooms].map((src, i) => (
+            <div key={i} className="relative w-64 h-48 md:w-96 md:h-72 flex-shrink-0 grayscale hover:grayscale-0 transition-all duration-700">
+               <Image 
+                 src={src} 
+                 alt={`Room Style ${i}`}
+                 fill
+                 className="object-cover rounded-sm"
+                 sizes="(max-width: 768px) 100vw, 33vw"
+               />
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Main Content */}
       <div className="z-10 w-full max-w-4xl flex flex-col items-center text-center space-y-12 relative">
         
@@ -150,33 +175,40 @@ export default function Home() {
         {/* Upload Component */}
         <div 
           className={cn(
-            "w-full max-w-lg mx-auto group cursor-pointer transition-all duration-500 ease-out",
-            "border border-dashed rounded-xl p-12",
+            "w-full max-w-lg mx-auto group cursor-pointer transition-all duration-500 ease-out relative",
+            "border-2 border-dashed rounded-2xl p-12",
             isDragging 
-              ? "border-black bg-white/50 scale-[1.02]" 
-              : "border-neutral-300 hover:border-neutral-400 bg-white/20 hover:bg-white/40"
+              ? "border-black bg-white/80 scale-[1.02] shadow-2xl" 
+              : "border-neutral-900/20 hover:border-neutral-900 bg-white/40 hover:bg-white/60 backdrop-blur-sm hover:shadow-xl"
           )}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          <div className="flex flex-col items-center space-y-4">
+          {/* Accent corners */}
+          <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-black -translate-x-1 -translate-y-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-black translate-x-1 -translate-y-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-black -translate-x-1 translate-y-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-black translate-x-1 translate-y-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+          <div className="flex flex-col items-center space-y-6">
             <div className={cn(
-              "p-4 rounded-full border transition-colors duration-300",
-              "border-neutral-200 bg-white group-hover:border-black/10"
+              "p-5 rounded-full border-2 transition-all duration-300 group-hover:scale-110",
+              "border-neutral-900/10 bg-white shadow-sm group-hover:border-neutral-900 group-hover:shadow-md"
             )}>
-              <Upload className="w-6 h-6 text-neutral-600 group-hover:text-black transition-colors" />
+              <Upload className="w-8 h-8 text-neutral-600 group-hover:text-black transition-colors" strokeWidth={1.5} />
             </div>
-            <div className="space-y-1">
-              <p className="font-serif text-2xl">Upload Photo</p>
-              <p className="text-sm text-neutral-500 font-sans">
-                or drag and drop your image here
+            <div className="space-y-2">
+              <p className="font-serif text-3xl tracking-tight text-neutral-900">Upload Photo</p>
+              <p className="text-sm text-neutral-500 font-sans tracking-wide uppercase">
+                Drag & Drop or Click to Browse
               </p>
             </div>
           </div>
         </div>
       </div>
-      {/* <Assets /> */}
+      
+      <Assets />
     </main>
   );
 }
