@@ -1,0 +1,55 @@
+---
+description: Next.js full-stack coding conventions and best practices
+alwaysApply: true
+---
+
+# Next.js Full-Stack Standards (Elite)
+
+- **Code quality**: Prefer clarity over cleverness. Keep functions small, name things precisely, avoid “magic”.
+- **TypeScript**: Use strict typing, avoid `any`, model domain types explicitly, validate untrusted input at boundaries.
+- **Next.js architecture**: Use Server Components by default; add `'use client'` only when needed. Keep server-only code out of client bundles.
+- **Data access**: Centralize DB/API logic in a small set of modules. No direct DB calls from UI components.
+- **Error handling**: Never swallow errors. Add context, log safely (no secrets/PII), and surface user-friendly messages.
+- **Security**: Treat all external input as hostile. Use parameterized queries/ORM, escape/encode output, apply least privilege.
+- **Auth/session**: Keep session checks on the server; gate sensitive routes and actions. Avoid trusting client claims.
+- **API design**: Use clear request/response schemas, consistent status codes, and stable error shapes.
+- **Performance**: Prefer streaming/server rendering; avoid unnecessary client state. Memoize expensive computations and avoid N+1 fetches.
+- **Tailwind CSS**: Prefer Tailwind utilities over bespoke CSS. Keep class lists readable, use design tokens via theme config, and extract repeated patterns into components or small class helpers.
+- **Testing**: Add unit tests for pure logic and integration tests for critical flows. Fix flaky tests—don’t “retry until green”.
+- **Git discipline**: Small focused changes; keep PRs reviewable. Update docs when behavior changes.
+
+## Patterns
+
+### Tailwind class hygiene
+
+```tsx
+// ✅ GOOD: readable ordering + variants; extract repetition
+<button
+  className={cn(
+    'inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium',
+    'bg-zinc-900 text-white hover:bg-zinc-800',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400',
+    'disabled:pointer-events-none disabled:opacity-50'
+  )}
+/>
+```
+
+### Validate at the boundary (server)
+
+```ts
+// ✅ GOOD: validate untrusted input at the edge of the system
+const schema = z.object({ id: z.string().uuid() });
+const { id } = schema.parse(payload);
+```
+
+### Don’t swallow errors
+
+```ts
+// ✅ GOOD: add context and rethrow
+try {
+  return await doWork();
+} catch (err) {
+  logger.error('doWork failed', { err });
+  throw err;
+}
+```
