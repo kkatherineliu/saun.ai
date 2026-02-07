@@ -1,9 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState, type SubmitEvent } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Upload, ArrowRight, MoveRight, Star, Sparkles } from "lucide-react";
+import { Upload, ArrowRight, MoveRight, Star, Sparkles, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+type AnalyzeResponse = {
+  data: {
+    summary: string;
+    labels: string[];
+    confidence: number;
+    safety_notes: string[];
+  };
+};
 
 const Assets = () =>{
   return (
@@ -72,23 +82,109 @@ const sampleRooms = [
   "/sample-rooms/bedroom5.jpg",
 ];
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+
 export default function Home() {
+  const router = useRouter();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setIsDragging(true);
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setIsDragging(false);
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setIsDragging(false);
-    // Handle file drop logic here
+    const dropped = e.dataTransfer.files?.[0];
+    if (dropped?.type.startsWith("image/")) {
+      setFile(dropped);
+      setError(null);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const chosen = e.target.files?.[0];
+    if (chosen) {
+      setFile(chosen);
+      setError(null);
+    }
+    e.target.value = "";
+  };
+
+  const handleSubmit = async (event: SubmitEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+    if (!file) {
+      setError("Please select an image first.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("image", file);
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/analyze-photo`, {
+        method: "POST",
+        body: formData,
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setError((payload as { error?: string })?.error ?? "Request failed.");
+        return;
+      }
+      const data = (payload as AnalyzeResponse).data;
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("saun-analyze-result", JSON.stringify(data));
+        router.push("/design");
+      }
+    } catch {
+      setError("Could not reach backend. Ensure the API is running.");
+    } finally {
+      setLoading(false);
+    }
+
+
+  };
+
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return url;
+    });
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  const clearFile = () => {
+    setFile(null);
+    setError(null);
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    inputRef.current?.form?.reset();
   };
 
   return (
@@ -123,21 +219,13 @@ export default function Home() {
             className="opacity-100"
           />
         </svg>
-
-        {/* Existing Stars/Sparkles (kept for texture) */}
-        <div className="absolute top-[10%] left-[5%] text-neutral-400 font-serif text-9xl select-none rotate-12 opacity-50">
-          *
-        </div>
-        <div className="absolute bottom-[10%] right-[5%] text-neutral-400 font-serif text-9xl select-none -rotate-12 opacity-50">
-          *
-        </div>
       </div>
 
       {/* Horizontal Image Strip (Background Center) */}
       <div className="absolute top-1/2 left-0 -translate-y-1/2 w-full overflow-hidden opacity-20 pointer-events-none z-0 mix-blend-multiply grayscale-[20%]">
         <div className="flex gap-8 animate-in fade-in duration-1000 min-w-max px-8">
           {[...sampleRooms, ...sampleRooms].map((src, i) => (
-            <div key={i} className="relative w-64 h-48 md:w-96 md:h-72 flex-shrink-0 grayscale hover:grayscale-0 transition-all duration-700">
+            <div key={i} className="relative w-64 h-48 md:w-96 md:h-72 shrink-0 grayscale hover:grayscale-0 transition-all duration-700">
                <Image 
                  src={src} 
                  alt={`Room Style ${i}`}
@@ -173,18 +261,31 @@ export default function Home() {
         </div>
 
         {/* Upload Component */}
-        <div 
-          className={cn(
-            "w-full max-w-lg mx-auto group cursor-pointer transition-all duration-500 ease-out relative",
-            "border-2 border-dashed rounded-2xl p-12",
-            isDragging 
-              ? "border-black bg-white/80 scale-[1.02] shadow-2xl" 
-              : "border-neutral-900/20 hover:border-neutral-900 bg-white/40 hover:bg-white/60 backdrop-blur-sm hover:shadow-xl"
-          )}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
+        <form onSubmit={handleSubmit} className="w-full max-w-lg mx-auto flex flex-col items-center gap-6">
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileChange}
+            className="hidden"
+            aria-hidden
+          />
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => inputRef.current?.click()}
+            onKeyDown={(e) => e.key === "Enter" && inputRef.current?.click()}
+            className={cn(
+              "w-full group cursor-pointer transition-all duration-500 ease-out relative",
+              "border-2 border-dashed rounded-2xl p-12",
+              isDragging
+                ? "border-black bg-white/80 scale-[1.02] shadow-2xl"
+                : "border-neutral-900/20 hover:border-neutral-900 bg-white/40 hover:bg-white/60 backdrop-blur-sm hover:shadow-xl"
+            )}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
           {/* Accent corners */}
           <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-black -translate-x-1 -translate-y-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
           <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-black translate-x-1 -translate-y-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
@@ -192,23 +293,74 @@ export default function Home() {
           <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-black translate-x-1 translate-y-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
           <div className="flex flex-col items-center space-y-6">
-            <div className={cn(
-              "p-5 rounded-full border-2 transition-all duration-300 group-hover:scale-110",
-              "border-neutral-900/10 bg-white shadow-sm group-hover:border-neutral-900 group-hover:shadow-md"
-            )}>
-              <Upload className="w-8 h-8 text-neutral-600 group-hover:text-black transition-colors" strokeWidth={1.5} />
-            </div>
-            <div className="space-y-2">
-              <p className="font-serif text-3xl tracking-tight text-neutral-900">Upload Photo</p>
-              <p className="text-sm text-neutral-500 font-sans tracking-wide uppercase">
-                Drag & Drop or Click to Browse
-              </p>
-            </div>
+            {file ? (
+              <>
+                <div className="relative">
+                  <img
+                    src={previewUrl ?? undefined}
+                    alt="Preview"
+                    className="max-h-32 w-auto rounded-lg object-cover border border-neutral-200 shadow-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); clearFile(); }}
+                    className="absolute -top-2 -right-2 rounded-full bg-neutral-900 text-white p-1 hover:bg-black transition-colors"
+                    aria-label="Remove image"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <p className="font-sans text-sm text-neutral-600 truncate max-w-full px-4">{file.name}</p>
+              </>
+            ) : (
+              <>
+                <div className={cn(
+                  "p-5 rounded-full border-2 duration-300 group-hover:scale-110",
+                  "border-neutral-900/10 bg-white shadow-sm group-hover:border-neutral-900 group-hover:shadow-md"
+                )}>
+                  <Upload className="w-8 h-8 text-neutral-600 group-hover:text-black" strokeWidth={1.5} />
+                </div>
+                <div className="space-y-2">
+                  <p className="font-serif text-3xl text-neutral-900">Upload Photo</p>
+                  <p className="text-sm text-neutral-500 font-sans">
+                    Drag & Drop or Click to Browse
+                  </p>
+                </div>
+                
+              </>
+            )}
           </div>
         </div>
+
+        {file && (
+          <>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex items-center gap-3 px-8 py-4 bg-neutral-900 text-white rounded-full font-medium text-sm hover:bg-black hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-60 disabled:hover:scale-100"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="tracking-wider">Analyzing…</span>
+                </>
+              ) : (
+                <>
+                  <span className="tracking-wider">Analyze Photo</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </>
+        )}
+      </form>
+
+      {error && (
+        <p className="w-full max-w-lg mx-auto rounded-xl border border-red-200 bg-red-50/80 px-4 py-3 text-sm text-red-700">
+          {error}
+        </p>
+      )}
       </div>
-      
-      <Assets />
     </main>
   );
 }
