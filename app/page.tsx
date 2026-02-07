@@ -87,18 +87,52 @@ export default function Home() {
     <main className="min-h-screen flex flex-col items-center justify-center p-8 md:p-24 relative overflow-hidden">
       
       {/* Decorative Background Elements */}
-      <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-40">
-        <div className="absolute top-[10%] left-[5%] text-neutral-300 font-serif text-9xl select-none rotate-12">
+      <div className="absolute inset-0 w-full h-full pointer-events-none z-0 overflow-hidden">
+        {/* Bold Opinionated Curves */}
+        <svg className="absolute inset-0 w-full h-full text-black" viewBox="0 0 100 100" preserveAspectRatio="none">
+          {/* Large sweeping curve from bottom left */}
+          <path 
+            d="M-10,100 C20,40 50,80 100,20" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="0.3" 
+            className="opacity-100"
+          />
+          {/* Secondary architectural curve */}
+          <path 
+            d="M0,60 C30,70 60,30 110,40" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="0.2" 
+            className="opacity-100"
+          />
+          {/* Sharp contrast line */}
+          <path 
+            d="M70,0 C70,30 90,60 90,100" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="0.4" 
+            className="opacity-100"
+          />
+        </svg>
+
+        {/* Existing Stars/Sparkles (kept for texture) */}
+        <div className="absolute top-[10%] left-[5%] text-neutral-400 font-serif text-9xl select-none rotate-12 opacity-50">
           *
         </div>
-        <div className="absolute bottom-[10%] right-[5%] text-neutral-300 font-serif text-9xl select-none -rotate-12">
+        <div className="absolute bottom-[10%] right-[5%] text-neutral-400 font-serif text-9xl select-none -rotate-12 opacity-50">
           *
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="z-10 w-full max-w-4xl flex flex-col items-center text-center space-y-12">
+      <div className="z-10 w-full max-w-4xl flex flex-col items-center text-center space-y-12 relative">
         
+        {/* Soft Glow Cutout */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200%] h-[150%] -z-10 pointer-events-none">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_closest-side,var(--background)_60%,transparent_100%)] opacity-95 blur-3xl" />
+        </div>
+
         {/* Header */}
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-1000">
           <p className="uppercase tracking-[0.2em] text-sm font-medium text-neutral-500">
