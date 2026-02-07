@@ -1,6 +1,24 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { ArrowUp, GripVertical, Check } from "lucide-react";
+
+export type Suggestion = {
+  id: string;
+  title: string;
+  why: string;
+  impact: string;
+  effort: string;
+  steps?: string[];
+};
+
+export type Message = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  suggestions?: Suggestion[];
+};
 
 type ChatSidebarProps = {
   /** Controlled value for the prompt/style input */
@@ -12,43 +30,212 @@ type ChatSidebarProps = {
   /** Optional label above the input */
   label?: string;
   className?: string;
+  /** Optional chat history */
+  messages?: Message[];
+  /** IDs of selected suggestions */
+  selectedSuggestionIds?: Set<string>;
+  /** Callback to toggle a suggestion */
+  onToggleSuggestion?: (id: string) => void;
+  /** Callback when user submits a message */
+  onSubmit?: (value: string) => void;
 };
 
 export function ChatSidebar({
   value = "",
   onChange,
-  placeholder = "Extra style prompt (e.g. Scandinavian minimal, warm light)…",
+  placeholder = "Style requests...",
   label = "Style prompt",
   className,
+  messages = [
+    { id: "1", role: "assistant", content: "Hello! I'm your design assistant. Describe your ideal space or ask for suggestions." }
+  ],
+  selectedSuggestionIds = new Set(),
+  onToggleSuggestion,
+  onSubmit,
 }: ChatSidebarProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const [width, setWidth] = useState(600); // Default max width
+  const [isResizing, setIsResizing] = useState(false);
+
+  // Resize logic
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      // Calculate new width: window width - mouse X position
+      // (Since sidebar is on the right)
+      const newWidth = document.body.clientWidth - e.clientX;
+      setWidth(Math.max(280, Math.min(newWidth, 600))); // Min 280px, Max 600px
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.body.style.cursor = "default";
+      document.body.style.userSelect = "auto";
+    };
+
+    if (isResizing) {
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    }
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizing]);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      const newHeight = value ? textareaRef.current.scrollHeight : 44;
+      textareaRef.current.style.height = `${Math.min(Math.max(newHeight, 44), 200)}px`;
+    }
+  }, [value]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (value.trim()) {
+        onSubmit?.(value);
+      }
+    }
+  };
+
   return (
     <aside
+      ref={sidebarRef}
+      style={{ width }}
       className={cn(
-        "flex w-full max-w-sm flex-col border-l border-neutral-200 bg-white/30 dark:border-neutral-800 dark:bg-neutral-950/30",
-        "min-h-screen"
+        "flex flex-col border-l border-neutral-200 bg-[#F3F1E7]/50 backdrop-blur-sm relative",
+        "h-screen sticky top-0",
+        className
       )}
     >
-      <div className="flex flex-1 flex-col p-4">
-        {label && (
-          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-neutral-500">
-            {label}
-          </p>
-        )}
-        <div className="flex-1" />
-        <div className="pt-4">
+      {/* Resize Handle */}
+      <div
+        className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-full cursor-col-resize z-50 flex items-center justify-center group touch-none"
+        onMouseDown={(e) => {
+          e.preventDefault();
+          setIsResizing(true);
+        }}
+      >
+        {/* Visual indicator - Round Grip Icon */}
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white border border-neutral-200 shadow-sm text-neutral-400 transition-all duration-300 group-hover:scale-110 group-hover:border-neutral-300 group-hover:text-neutral-600 group-active:scale-95">
+          <GripVertical className="h-4 w-4" />
+        </div>
+      </div>
+
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-neutral-200/50 p-4 shrink-0">
+        <span className="text-xs font-medium uppercase tracking-widest text-neutral-500">
+          {label}
+        </span>
+      </div>
+
+      {/* Messages Area - Scrollable */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide [&::-webkit-scrollbar]:hidden">
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className={cn(
+              "flex flex-col gap-2 text-sm max-w-[95%]",
+              msg.role === "user" ? "ml-auto items-end" : "mr-auto items-start"
+            )}
+          >
+            <div
+              className={cn(
+                "rounded-2xl px-4 py-3 leading-relaxed",
+                msg.role === "user"
+                  ? "bg-[#121212] text-[#F3F1E7] rounded-br-sm" // Chic Black Bubble
+                  : "bg-white border border-neutral-200 text-neutral-800 rounded-bl-sm shadow-sm" // Chic White Bubble
+              )}
+            >
+              <div className="whitespace-pre-wrap">{msg.content}</div>
+
+              {/* Suggestions Grid */}
+              {msg.suggestions && msg.suggestions.length > 0 && (
+                <div className="mt-4 flex flex-col gap-2">
+                  <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-1">
+                    Suggested Improvements
+                  </p>
+                  {msg.suggestions.map((s) => {
+                    const isSelected = selectedSuggestionIds.has(s.id);
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => onToggleSuggestion?.(s.id)}
+                        className={cn(
+                          "group relative flex flex-col items-start w-full text-left transition-all duration-300",
+                          "rounded-xl border p-3 hover:shadow-md",
+                          isSelected 
+                            ? "bg-neutral-900 border-neutral-900 text-white" 
+                            : "bg-white border-neutral-200 text-neutral-900 hover:border-neutral-300"
+                        )}
+                      >
+                        {/* Header Line */}
+                        <div className="flex items-center justify-between w-full gap-2">
+                          <span className="font-medium text-sm">{s.title}</span>
+                          <div className={cn(
+                            "w-5 h-5 rounded-full border flex items-center justify-center transition-colors shrink-0",
+                            isSelected 
+                              ? "border-white bg-white text-black" 
+                              : "border-neutral-300 group-hover:border-neutral-400"
+                          )}>
+                             {isSelected && <Check className="w-3 h-3" />}
+                          </div>
+                        </div>
+
+                        {/* Expandable Content */}
+                        <div className="grid grid-rows-[0fr] group-hover:grid-rows-[1fr] transition-[grid-template-rows] duration-300 w-full">
+                           <div className="overflow-hidden">
+                             <div className={cn(
+                               "pt-3 text-xs leading-relaxed space-y-2",
+                               isSelected ? "text-neutral-300" : "text-neutral-600"
+                             )}>
+                               <p>{s.why}</p>
+                               <div className="flex gap-3 text-[10px] uppercase tracking-wider opacity-80">
+                                 <span>Impact: <b>{s.impact}</b></span>
+                                 <span>Effort: <b>{s.effort}</b></span>
+                               </div>
+                             </div>
+                           </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Input Area - Fixed at bottom */}
+      <div className="p-4 pt-2 shrink-0">
+        <div className="relative flex items-end gap-2 rounded-xl border border-neutral-300 bg-white p-2 shadow-sm focus-within:ring-1 focus-within:ring-neutral-900 transition-shadow">
           <textarea
+            ref={textareaRef}
             value={value}
             onChange={(e) => onChange?.(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder={placeholder}
-            className={cn(
-              "w-full min-h-24 resize-y rounded-xl border border-neutral-200 bg-background px-3 py-2 text-sm text-foreground placeholder:text-neutral-500",
-              "focus:outline-none focus:ring-2 focus:ring-neutral-900/20 focus:border-neutral-400",
-              "disabled:opacity-50 disabled:cursor-not-allowed"
-            )}
+            className="flex-1 resize-none bg-transparent px-2 py-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none max-h-48 [&::-webkit-scrollbar]:hidden"
+            rows={1}
+            style={{ minHeight: "44px" }}
             aria-label={label}
             disabled={onChange === undefined}
-            rows={4}
           />
+          <button
+            className="mb-1 rounded-lg bg-neutral-900 p-2 text-white hover:bg-neutral-800 disabled:opacity-50 transition-colors"
+            disabled={!value.trim()}
+            onClick={() => value.trim() && onSubmit?.(value)}
+          >
+            <ArrowUp className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </aside>

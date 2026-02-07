@@ -2,20 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ChatSidebar } from "@/components/ChatSidebar";
+import { ChatSidebar, type Message, type Suggestion } from "@/components/ChatSidebar";
 import { cn } from "@/lib/utils";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:5001";
 const DESIGN_SESSION_KEY = "saun-design-session";
-
-type Suggestion = {
-  id: string;
-  title: string;
-  why: string;
-  impact: string;
-  effort: string;
-  steps?: string[];
-};
 
 type RatingResult = {
   overall_score: number;
@@ -42,6 +33,13 @@ export default function DesignPage() {
   const [numVariations, setNumVariations] = useState(2);
   const [job, setJob] = useState<JobStatus | null>(null);
   const [generated, setGenerated] = useState<string[]>([]);
+  const [messages, setMessages] = useState<Message[]>([
+    { 
+      id: "1", 
+      role: "assistant", 
+      content: "Hello! I'm your design assistant. Upload a room photo to get started, and I'll help you redesign it." 
+    }
+  ]);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Restore session passed from landing page (after Analyze)
@@ -124,6 +122,17 @@ export default function DesignPage() {
       setRating(data as RatingResult);
       const top = (data?.suggestions ?? []).slice(0, 2).map((s: Suggestion) => s.id);
       setSelectedIds(new Set(top));
+
+      // Add assistant message with suggestions
+      setMessages(prev => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: "assistant",
+          content: `I've analyzed your room! It has a score of ${data.overall_score}/10. ${data.summary}\n\nHere are my suggestions for improvement:`,
+          suggestions: data.suggestions
+        }
+      ]);
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : String(e));
     } finally {
@@ -469,8 +478,23 @@ export default function DesignPage() {
       <ChatSidebar
         value={userExtra}
         onChange={setUserExtra}
-        placeholder='e.g. "Scandinavian minimal, warm natural light"'
-        label="Extra style prompt (optional)"
+        messages={messages}
+        selectedSuggestionIds={selectedIds}
+        onToggleSuggestion={(id) => {
+          setSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+          });
+        }}
+        onSubmit={(text) => {
+          setMessages((prev) => [
+            ...prev,
+            { id: Date.now().toString(), role: "user", content: text }
+          ]);
+          setUserExtra("");
+        }}
       />
     </div>
   );
