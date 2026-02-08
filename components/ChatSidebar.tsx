@@ -188,12 +188,11 @@ export function ChatSidebar({
           </span>
       </div>
 
-      {/* Messages Area - Scrollable */}
       <div
         ref={messagesRef}
         className="flex-1 overflow-y-auto px-6 py-4 space-y-6 scrollbar-hide [&::-webkit-scrollbar]:hidden"
       >
-        {messages.map((msg) => {
+        {messages.map((msg, i) => {
           const hasSuggestions = msg.suggestions && msg.suggestions.length > 0;
           
           return (
