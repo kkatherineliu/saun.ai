@@ -6,6 +6,7 @@ import { ArrowUp, GripVertical, Check } from "lucide-react";
 
 export type Suggestion = {
   id: string;
+  category?: string;
   title: string;
   why: string;
   impact: string;
@@ -21,13 +22,9 @@ export type Message = {
 };
 
 type ChatSidebarProps = {
-  /** Controlled value for the prompt/style input */
   value?: string;
-  /** Called when the user types in the input */
   onChange?: (value: string) => void;
-  /** Placeholder for the input */
   placeholder?: string;
-  /** Optional label above the input */
   label?: string;
   className?: string;
   /** Optional chat history */

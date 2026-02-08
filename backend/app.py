@@ -32,6 +32,7 @@ GEMINI_RATING_MODEL = os.getenv("GEMINI_RATING_MODEL", "gemini-3-flash-preview")
 NANOBANANA_MODEL = os.getenv("NANOBANANA_MODEL", "gemini-2.5-flash-image")
 
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "10"))
+FIXED_CATEGORIES = ["organization", "lighting", "spacing", "color_harmony", "cleanliness", "feng shui"]
 
 if not GEMINI_API_KEY:
     raise RuntimeError("Missing GEMINI_API_KEY in environment")
@@ -191,34 +192,40 @@ def extract_inline_images_from_gemini(resp: Dict[str, Any]) -> List[Dict[str, st
 # ----------------------------
 RATING_SCHEMA = {
     "type": "object",
+    "additionalProperties": False,
     "properties": {
         "overall_score": {"type": "number", "description": "Overall interior design score from 0 to 10."},
         "breakdown": {
             "type": "object",
+            "additionalProperties": False,
             "properties": {
                 "organization": {"type": "number"},
                 "lighting": {"type": "number"},
                 "spacing": {"type": "number"},
                 "color_harmony": {"type": "number"},
                 "cleanliness": {"type": "number"},
+                "feng shui": {"type": "number"},
             },
-            "required": ["organization", "lighting", "spacing", "color_harmony", "cleanliness"],
+            "required": FIXED_CATEGORIES,
         },
         "summary": {"type": "string", "description": "1-2 sentence summary of the room's design."},
         "suggestions": {
             "type": "array",
+            "minItems": 6,
+            "maxItems": 6,
             "items": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {
                     "id": {"type": "string", "description": "Stable short id like s1, s2..."},
+                    "category": {"type": "string", "enum": FIXED_CATEGORIES},
                     "title": {"type": "string"},
                     "why": {"type": "string"},
                     "steps": {"type": "array", "items": {"type": "string"}},
                     "impact": {"type": "string", "description": "low|medium|high"},
                     "effort": {"type": "string", "description": "low|medium|high"},
-                    "tags": {"type": "array", "items": {"type": "string"}},
                 },
-                "required": ["id", "title", "why", "steps", "impact", "effort", "tags"],
+                "required": ["id", "category", "title", "why", "steps", "impact", "effort"],
             },
         },
         "risks_or_tradeoffs": {"type": "array", "items": {"type": "string"}},
@@ -240,13 +247,22 @@ Scoring rubric:
 Rules:
 - Be kind and objective; do NOT judge the person.
 - Suggestions must be visually actionable and feasible to apply in an edited photo.
-- Provide 5-8 suggestions.
+- Return exactly 6 suggestions total: one per category.
+- Allowed categories only: organization, lighting, spacing, color_harmony, cleanliness, feng shui.
+- The `category` field for each suggestion must use one of those exact values.
 
 Return ONLY valid JSON matching the provided schema. No markdown, no extra text.
 """.strip()
 
-def build_edit_prompt(selected_suggestions: List[Dict[str, Any]], user_extra: str) -> str:
-    bullets = "\n".join([f"- {s.get('title')}: {s.get('steps')}" for s in selected_suggestions])
+def build_edit_prompt(
+    selected_suggestions: List[Dict[str, Any]],
+    selected_categories: List[str],
+    additional_changes: List[str],
+    user_extra: str,
+) -> str:
+    bullets = "\n".join([f"- [{s.get('category', 'uncategorized')}] {s.get('title')}: {s.get('steps')}" for s in selected_suggestions])
+    category_line = ", ".join(selected_categories) if selected_categories else "none"
+    extra_lines = "\n".join([f"- {x}" for x in additional_changes]) if additional_changes else "- none"
     return f"""
 Edit the provided room photo realistically.
 
@@ -259,10 +275,75 @@ Hard constraints:
 Apply these changes:
 {bullets}
 
+Selected improvement categories:
+{category_line}
+
+Additional user changes:
+{extra_lines}
+
 User style preference (optional): {user_extra or "none"}
 
 Return an edited image.
 """.strip()
+
+def _safe_json_loads(value: Optional[str], fallback):
+    if not value:
+        return fallback
+    try:
+        return json.loads(value)
+    except Exception:
+        return fallback
+
+def _get_latest_generated_asset(db, session_id: str) -> Optional[ImageAsset]:
+    return (
+        db.query(ImageAsset)
+        .filter(ImageAsset.session_id == session_id, ImageAsset.kind == "generated")
+        .order_by(ImageAsset.created_at.desc())
+        .first()
+    )
+
+def _mime_from_path(path: str) -> str:
+    lower = path.lower()
+    if lower.endswith(".png"):
+        return "image/png"
+    if lower.endswith(".webp"):
+        return "image/webp"
+    return "image/jpeg"
+
+def generate_rating_for_session(db, sess: Session) -> Dict[str, Any]:
+    prompt = build_rating_prompt(FIXED_CATEGORIES)
+
+    parts = []
+    if sess.original_file_uri:
+        parts.append({"fileData": {"fileUri": sess.original_file_uri, "mimeType": "image/jpeg"}})
+    else:
+        with open(sess.original_image_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("utf-8")
+        parts.append({"inlineData": {"mimeType": "image/jpeg", "data": b64}})
+
+    parts.append({"text": prompt})
+
+    payload = {
+        "contents": [{"parts": parts}],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "responseJsonSchema": RATING_SCHEMA,
+            "temperature": 0.2
+        }
+    }
+
+    resp = gemini_generate_content(GEMINI_RATING_MODEL, payload)
+    text = extract_text_from_gemini(resp)
+    if not text:
+        raise RuntimeError("Gemini returned empty response text for structured output")
+
+    rating_obj = json.loads(text)
+    suggestions = rating_obj.get("suggestions", [])
+    sess.rating_json = json.dumps(rating_obj)
+    sess.suggestions_json = json.dumps(suggestions)
+    sess.status = "rated"
+    db.commit()
+    return rating_obj
 
 # ----------------------------
 # Background job runner (simple)
@@ -288,18 +369,24 @@ def run_generation_job(job_id: str):
 
         requested = json.loads(job.requested_edits_json)
         selected_suggestions = requested["selected_suggestions"]
+        selected_categories = requested.get("selected_categories", [])
+        additional_changes = requested.get("additional_changes", [])
         user_extra = requested.get("user_prompt_extra", "")
-        num_variations = int(requested.get("num_variations", 1))
+        num_variations = 1
 
         # Build prompt
-        edit_prompt = build_edit_prompt(selected_suggestions, user_extra)
+        edit_prompt = build_edit_prompt(selected_suggestions, selected_categories, additional_changes, user_extra)
 
-        # Use the uploaded file_uri if available (best), else fall back to local file as inline base64
+        # Start from the latest generated image when available; otherwise use original upload.
         parts = []
-        if sess.original_file_uri:
+        latest_generated = _get_latest_generated_asset(db, sess.id)
+        if latest_generated:
+            with open(latest_generated.path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("utf-8")
+            parts.append({"inlineData": {"mimeType": _mime_from_path(latest_generated.path), "data": b64}})
+        elif sess.original_file_uri:
             parts.append({"fileData": {"fileUri": sess.original_file_uri, "mimeType": "image/jpeg"}})
         else:
-            # inline base64
             with open(sess.original_image_path, "rb") as f:
                 b64 = base64.b64encode(f.read()).decode("utf-8")
             parts.append({"inlineData": {"mimeType": "image/jpeg", "data": b64}})
@@ -307,7 +394,7 @@ def run_generation_job(job_id: str):
         parts.append({"text": edit_prompt})
 
         generated_urls = []
-        for i in range(num_variations):
+        for _ in range(num_variations):
             payload = {"contents": [{"parts": parts}]}
             resp = gemini_generate_content(NANOBANANA_MODEL, payload)
             imgs = extract_inline_images_from_gemini(resp)
@@ -456,10 +543,30 @@ def create_session():
         db.add(asset)
         db.commit()
 
+        try:
+            rating_obj = generate_rating_for_session(db, sess)
+        except json.JSONDecodeError:
+            sess.status = "error"
+            db.commit()
+            return jsonify({
+                "error": {"code": "bad_model_output", "message": "Gemini did not return valid JSON"},
+                "session_id": sid,
+                "original_image_url": sess.original_image_url,
+            }), 502
+        except requests.HTTPError as e:
+            sess.status = "error"
+            db.commit()
+            return jsonify({
+                "error": {"code": "gemini_error", "message": str(e)},
+                "session_id": sid,
+                "original_image_url": sess.original_image_url,
+            }), 502
+
         return jsonify({
             "session_id": sid,
             "original_image_url": sess.original_image_url,
             "file_uri": file_uri,  # optional
+            "rating_result": rating_obj,
         })
     finally:
         db.close()
@@ -470,55 +577,17 @@ def rate_session(session_id: str):
     if not check_rate_limit(ip):
         return jsonify({"error": {"code": "rate_limited", "message": "Too many requests"}}), 429
 
-    body = request.get_json(silent=True) or {}
-    criteria = body.get("criteria") or ["organization", "lighting", "spacing", "color_harmony", "cleanliness"]
-
     db = SessionLocal()
     try:
         sess: Optional[Session] = db.query(Session).get(session_id)
         if not sess:
             return jsonify({"error": {"code": "not_found", "message": "Session not found"}}), 404
 
-        prompt = build_rating_prompt(criteria)
-
-        parts = []
-        if sess.original_file_uri:
-            parts.append({"fileData": {"fileUri": sess.original_file_uri, "mimeType": "image/jpeg"}})
-        else:
-            with open(sess.original_image_path, "rb") as f:
-                b64 = base64.b64encode(f.read()).decode("utf-8")
-            parts.append({"inlineData": {"mimeType": "image/jpeg", "data": b64}})
-
-        parts.append({"text": prompt})
-
-        # Structured outputs via generationConfig.responseMimeType + responseJsonSchema :contentReference[oaicite:7]{index=7}
-        payload = {
-            "contents": [{"parts": parts}],
-            "generationConfig": {
-                "responseMimeType": "application/json",
-                "responseJsonSchema": RATING_SCHEMA,
-                "temperature": 0.2
-            }
-        }
-
-        resp = gemini_generate_content(GEMINI_RATING_MODEL, payload)
-        text = extract_text_from_gemini(resp)
-        if not text:
-            raise RuntimeError("Gemini returned empty response text for structured output")
-
-        rating_obj = json.loads(text)
-
-        # convenience: id->suggestion mapping
-        suggestions = rating_obj.get("suggestions", [])
-        sess.rating_json = json.dumps(rating_obj)
-        sess.suggestions_json = json.dumps(suggestions)
-        sess.status = "rated"
-        db.commit()
-
+        rating_obj = generate_rating_for_session(db, sess)
         return jsonify(rating_obj)
 
     except json.JSONDecodeError:
-        return jsonify({"error": {"code": "bad_model_output", "message": "Gemini did not return valid JSON", "raw": text[:1000]}}), 502
+        return jsonify({"error": {"code": "bad_model_output", "message": "Gemini did not return valid JSON"}}), 502
     except requests.HTTPError as e:
         return jsonify({"error": {"code": "gemini_error", "message": str(e)}}), 502
     finally:
@@ -532,9 +601,14 @@ def generate(session_id: str):
 
     body = request.get_json(silent=True) or {}
     selected_ids = body.get("selected_suggestion_ids") or []
+    selected_categories = body.get("selected_categories") or []
+    selected_categories = [c for c in selected_categories if c in FIXED_CATEGORIES]
+    additional_changes = body.get("additional_changes") or body.get("additional_suggestions") or []
+    if isinstance(additional_changes, str):
+        additional_changes = [additional_changes]
+    additional_changes = [str(x).strip() for x in additional_changes if str(x).strip()]
     user_extra = body.get("user_prompt_extra", "")
-    num_variations = int(body.get("num_variations", 1))
-    num_variations = max(1, min(num_variations, 4))  # guardrail
+    num_variations = 1
 
     db = SessionLocal()
     try:
@@ -542,15 +616,30 @@ def generate(session_id: str):
         if not sess:
             return jsonify({"error": {"code": "not_found", "message": "Session not found"}}), 404
 
-        if not sess.suggestions_json:
-            return jsonify({"error": {"code": "bad_state", "message": "Call /rate before /generate"}}), 400
+        if not sess.suggestions_json and not sess.rating_json:
+            return jsonify({"error": {"code": "bad_state", "message": "Session has no rating/suggestions"}}), 400
 
-        all_suggestions = json.loads(sess.suggestions_json)
-        chosen = [s for s in all_suggestions if s.get("id") in set(selected_ids)]
+        all_suggestions = _safe_json_loads(sess.suggestions_json, [])
+        selected_ids_set = set(selected_ids)
+        selected_categories_set = set(selected_categories)
+        chosen = [
+            s for s in all_suggestions
+            if s.get("id") in selected_ids_set or s.get("category") in selected_categories_set
+        ]
 
-        # If user didn't select anything, pick top 2 by default (hackathon-friendly)
+        if not chosen and selected_categories:
+            chosen = [{
+                "id": f"cat-{c}",
+                "category": c,
+                "title": f"Improve {c.replace('_', ' ')}",
+                "why": f"User selected {c.replace('_', ' ')} as a priority.",
+                "steps": [f"Apply improvements focused on {c.replace('_', ' ')}."],
+                "impact": "medium",
+                "effort": "medium",
+            } for c in selected_categories]
+
         if not chosen and all_suggestions:
-            chosen = all_suggestions[:2]
+            chosen = all_suggestions[:1]
 
         job_id = str(uuid.uuid4())
         job = GenerationJob(
@@ -559,6 +648,8 @@ def generate(session_id: str):
             status="queued",
             requested_edits_json=json.dumps({
                 "selected_suggestions": chosen,
+                "selected_categories": selected_categories,
+                "additional_changes": additional_changes,
                 "user_prompt_extra": user_extra,
                 "num_variations": num_variations,
                 "model": NANOBANANA_MODEL,
