@@ -1,4 +1,4 @@
-## devpost link: [CURAiTE](https://devpost.com/software/saun-ai)
+# devpost link: [CURAiTE](https://devpost.com/software/saun-ai)
 
 
 Most people don’t lack taste — they lack tools.
