@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { ArrowUp, GripVertical, Check } from "lucide-react";
+import { ArrowUp, GripVertical, Check, Loader2 } from "lucide-react";
 
 export type Suggestion = {
   id: string;
@@ -35,6 +35,10 @@ type ChatSidebarProps = {
   onToggleSuggestion?: (id: string) => void;
   /** Callback when user submits a message */
   onSubmit?: (value: string) => void;
+  /** Callback when user clicks curate */
+  onCurate?: () => void;
+  /** Whether curate is running */
+  isCurating?: boolean;
 };
 
 export function ChatSidebar({
@@ -47,6 +51,8 @@ export function ChatSidebar({
   selectedSuggestionIds = new Set(),
   onToggleSuggestion,
   onSubmit,
+  onCurate,
+  isCurating = false,
 }: ChatSidebarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
@@ -241,6 +247,23 @@ export function ChatSidebar({
             <ArrowUp className="h-4 w-4" />
           </button>
         </div>
+        
+        <button
+          type="button"
+          onClick={onCurate}
+          className={cn(
+            "mt-3 w-full rounded-full border border-neutral-900 bg-neutral-900 px-6 py-3",
+            "font-serif text-sm tracking-[0.2em] uppercase text-[#F3F1E7] transition-colors",
+            "hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+          )}
+          disabled={!onCurate || isCurating}
+        >
+          <span className="inline-flex items-center justify-center gap-2">
+            {isCurating && <Loader2 className="h-4 w-4 animate-spin" />}
+            {isCurating ? "Curating..." : "Curate"}
+          </span>
+        </button>
+
       </div>
     </aside>
   );
