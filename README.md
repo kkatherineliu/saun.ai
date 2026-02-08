@@ -1,41 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+devpost link: [CURAiTE]((https://devpost.com/software/saun-ai))
 
-## Getting Started
 
-First, run the development server:
+Most people don’t lack taste — they lack tools.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+We all have a _vision_ for how our space should feel, but there’s a huge gap between imagining a room and confidently designing it. Sometimes, Pinterest is overwhelming, furniture is expensive, and you can’t actually see if your ideas will work together.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+CURAiTE bridges that gap by acting as your personal interior design team — helping you visualize, refine, and bring your vision to life; curating the perfect space for any vibe.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 💡 What It Does
+- Gives smart room suggestions around feng shui, lighting, colour, and layout
+- Lets you chat with an AI interior designer to fine-tune your space
+- Recommends furniture pieces you can actually buy
+- Talk to a feng shui master to understand your room’s harmony
+- Iterates on previous designs so each version builds on the last
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🛠️ How We Built It
+**Gemini API** for image generation + interior design agents
+**ElevenLabs** for live voice chats with designers and feng shui experts
+*SERP API* for finding furniture online
+Frontend: Next.js, Tailwind CSS, shadcn
+Backend: Flask, SQLite
 
-## Learn More
+## ⚡ Challenges
+- Designing a UI that’s intuitive while still allowing deep customization
 
-To learn more about Next.js, take a look at the following resources:
+## 🏆 What We’re Proud Of
+- Building a full-stack app end-to-end under time pressure
+- Successfully integrating multiple AI APIs
+- Turning abstract “vibes” into something visual and actionable
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 📚 What We Learned
+- The basics of feng shui :p
+- How to integrate and orchestrate multiple APIs
+- Prompt engineering for structured, reliable outputs
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 🚀 What’s Next for CURAiTE
+- Budget and location-aware furniture recommendations
+- Deployment and stronger safeguards against malicious inputs
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-## Flask Backend for Room Rater
+# Setup
 
 The app has a Next.js frontend (`localhost:3000`) and Flask backend (`localhost:5001`).
 
