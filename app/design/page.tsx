@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChatSidebar, type Message, type Suggestion } from "@/components/ChatSidebar";
 import { cn } from "@/lib/utils";
+import { ArrowRight, MoveRight, Sparkles, Star } from "lucide-react";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001";
 const DESIGN_SESSION_KEY = "saun-design-session";
@@ -37,6 +38,62 @@ function toTitleCase(value: string) {
     .replaceAll("_", " ")
     .replace(/\b\w/g, (m) => m.toUpperCase());
 }
+const Assets = () => {
+  return (
+    <section className="mt-32 w-full max-w-5xl pt-24 border-t border-neutral-300/50 relative z-10">
+      <div className="flex flex-col md:flex-row justify-between items-start gap-12">
+        <div className="space-y-4">
+          <h3 className="font-serif text-3xl">Design Elements</h3>
+          <p className="text-neutral-500 text-sm max-w-xs">
+            Reusable components and typography styles matching the curated aesthetic.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 w-full max-w-2xl">
+          {/* Buttons */}
+          <div className="space-y-6">
+            <p className="text-xs uppercase tracking-widest text-neutral-400 font-medium">Buttons</p>
+
+            <div className="flex flex-col gap-4 items-start">
+              {/* Primary Button */}
+              <button className="group relative flex items-center justify-between gap-4 px-8 py-4 bg-[#121212] text-[#F3F1E7] rounded-none hover:bg-neutral-800 transition-all duration-300 w-full md:w-auto min-w-[200px]">
+                <span className="font-serif text-lg tracking-wide">Get Started</span>
+                <MoveRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+              </button>
+
+              {/* Secondary Button */}
+              <button className="group flex items-center gap-3 px-6 py-3 border border-[#121212] text-[#121212] rounded-full hover:bg-[#121212] hover:text-[#F3F1E7] transition-all duration-300">
+                <span className="text-sm font-medium tracking-wide">View Gallery</span>
+              </button>
+
+              {/* Text Link */}
+              <button className="group flex items-center gap-2 text-[#121212] hover:opacity-70 transition-opacity">
+                <span className="border-b border-black pb-0.5 text-sm uppercase tracking-widest">Learn More</span>
+                <ArrowRight className="w-4 h-4 -rotate-45 group-hover:rotate-0 transition-transform duration-300" />
+              </button>
+            </div>
+          </div>
+
+          {/* Typography & Cards */}
+          <div className="space-y-6">
+            <p className="text-xs uppercase tracking-widest text-neutral-400 font-medium">Typography & Surface</p>
+
+            <div className="p-8 bg-white border border-neutral-100 shadow-sm hover:shadow-md transition-shadow duration-300">
+              <div className="flex items-center gap-2 mb-4 text-neutral-400">
+                <Sparkles className="w-4 h-4" />
+                <span className="text-xs uppercase tracking-wider">Feature Card</span>
+              </div>
+              <h4 className="font-serif text-2xl mb-2">Modern Minimalist</h4>
+              <p className="text-neutral-500 text-sm leading-relaxed">
+                Clean lines, neutral palette, and functional furniture design.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
 
 export default function DesignPage() {
   const [busy, setBusy] = useState<string | null>(null);
@@ -52,6 +109,7 @@ export default function DesignPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hasAutoRatedRef = useRef(false);
 
   const applyRating = useCallback((result: RatingResult | null) => {
     setRating(result);
@@ -135,6 +193,8 @@ export default function DesignPage() {
     return originalUrl.startsWith("http") ? originalUrl : `${apiBase}${originalUrl}`;
   }, [originalUrl]);
 
+  const displayImageUrl = originalAbsolute ?? undefined;
+
   const generatedAbsolute = useMemo(
     () => generated.map((u) => (u.startsWith("http") ? u : `${apiBase}${u}`)),
     [generated]
@@ -152,6 +212,7 @@ export default function DesignPage() {
     setNumVariations(2);
     setJob(null);
     setGenerated([]);
+    hasAutoRatedRef.current = false;
   }, []);
 
   const rate = useCallback(async () => {
@@ -257,16 +318,6 @@ export default function DesignPage() {
     };
   }, []);
 
-  const cardClass = "rounded-2xl border border-neutral-200 bg-white/80 p-6 shadow-sm text-left";
-  const h2Class = "font-serif text-xl font-medium text-neutral-900 mb-3";
-  const btnClass =
-    "rounded-full border border-neutral-900 bg-neutral-900 px-6 py-3 text-sm font-medium text-white hover:bg-black transition-colors disabled:opacity-50 disabled:pointer-events-none";
-  const btnSecondaryClass =
-    "rounded-full border border-neutral-900 px-6 py-3 text-sm font-medium text-neutral-900 hover:bg-neutral-900 hover:text-white transition-colors disabled:opacity-50";
-  const canGenerate =
-    !!rating &&
-    (selectedIds.size > 0 || additionalChanges.trim().length > 0 || userExtra.trim().length > 0) &&
-    !busy;
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -282,149 +333,134 @@ export default function DesignPage() {
           {!sessionLoaded ? (
             <p className="text-neutral-500">Loading...</p>
           ) : !sessionId || !originalAbsolute ? (
-            <section className={cardClass}>
-              <h2 className={h2Class}>No image yet</h2>
-              <p className="text-neutral-600">
-                Upload a room photo on the home page and click <strong>Analyze Photo</strong>.
-              </p>
-              <Link href="/" className={cn(btnClass, "mt-4 inline-block")}>
-                Go to home page
-              </Link>
-            </section>
-          ) : (
-            <>
-              <section className={cardClass}>
-                <h2 className={h2Class}>1) Original room photo</h2>
-                <p className="text-sm text-neutral-600">
-                  This image stays fixed so you can compare each newly generated redesign.
-                </p>
-                <p className="mt-2 text-xs text-neutral-500">
-                  <strong>Session:</strong> <code className="rounded bg-neutral-100 px-1">{sessionId}</code>
-                </p>
-                <div className="mt-4">
-                  <img
-                    src={originalAbsolute}
-                    alt="Original room"
-                    className="w-full max-h-[420px] rounded-xl border border-neutral-200 object-contain"
-                  />
-                </div>
-                <button type="button" onClick={resetAll} className={cn(btnSecondaryClass, "mt-4")}>
-                  Start over
-                </button>
-              </section>
-
-              <section className={cardClass}>
-                <h2 className={h2Class}>2) Rate room</h2>
-                <button type="button" disabled={!sessionId || !!busy} onClick={rate} className={btnClass}>
-                  Rate (0-10)
-                </button>
-
-                {rating && (
-                  <div className="mt-6 space-y-4">
-                    <div className="flex flex-wrap items-baseline gap-3">
-                      <span className="font-serif text-2xl text-neutral-900">
-                        Overall: <strong>{rating.overall_score}</strong>/10
-                      </span>
-                      <p className="text-neutral-600">{rating.summary}</p>
-                    </div>
-
-                    {rating.breakdown && Object.keys(rating.breakdown).length > 0 && (
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                        {Object.entries(rating.breakdown).map(([k, v]) => (
-                          <div key={k} className="rounded-xl border border-neutral-200 bg-white p-3">
-                            <p className="text-xs uppercase tracking-wider text-neutral-500">{toTitleCase(k)}</p>
-                            <p className="font-serif text-lg font-semibold text-neutral-900">{v}</p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </section>
-
-              <section className={cardClass}>
-                <h2 className={h2Class}>3) Generate redesigned images</h2>
-                <div className="flex flex-wrap items-center gap-4">
-                  <label className="text-sm text-neutral-600">Variations:</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={4}
-                    value={numVariations}
-                    onChange={(e) => setNumVariations(Math.min(4, Math.max(1, Number(e.target.value) || 1)))}
-                    className="w-20 rounded-lg border border-neutral-200 bg-background px-3 py-2 text-sm text-foreground"
-                  />
-                  <button type="button" disabled={!canGenerate} onClick={generate} className={btnClass}>
-                    Generate
+            <section className="">
+              {/* Left Column: Image + Overall/Loading */}
+              <div className="lg:col-span-5 space-y-6 sticky top-8">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs uppercase tracking-widest text-neutral-500 font-medium">
+                    Original Photo
+                  </p>
+                  <button
+                    type="button"
+                    onClick={resetAll}
+                    className="text-xs font-medium text-neutral-400 hover:text-neutral-900 transition-colors"
+                  >
+                    Start over
                   </button>
                 </div>
-                <p className="mt-2 text-xs text-neutral-500">
-                  Use the sidebar on the right to add an optional style prompt.
-                </p>
+                
+                <div className="relative aspect-3/4 w-full overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-100 shadow-sm">
+                  <img
+                    src={displayImageUrl}
+                    alt="Original room"
+                    className="h-full w-full object-cover"
+                  />
+                  <div className="absolute inset-0 pointer-events-none bg-linear-to-t from-black/5 to-transparent" />
+                </div>
 
-                {job && (
-                  <div className="mt-4 text-sm text-neutral-600">
-                    <strong>Job:</strong> <code className="rounded bg-neutral-100 px-1">{job.job_id}</code> •{" "}
-                    <strong>Status:</strong> {job.status}
-                    {job.error && (
-                      <p className="mt-2 text-red-600">
-                        <strong>Error:</strong> {job.error}
+                {/* Status / Overall Rating Area */}
+                <div className="min-h-[120px]">
+                  {busy ? (
+                    <div className="flex flex-col gap-4 animate-in fade-in duration-300 py-2">
+                      <div className="flex items-center gap-3 text-neutral-900">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-900 border-t-transparent" />
+                        <p className="text-sm font-medium tracking-wide">{busy}</p>
+                      </div>
+                      <p className="text-xs text-neutral-500 max-w-xs leading-relaxed">
+                        Our AI is analyzing lighting, composition, and style to provide tailored recommendations.
                       </p>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  ) : rating ? (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                      <div>
+                        <p className="text-xs uppercase tracking-widest text-neutral-400 mb-2">Overall Score</p>
+                        <div className="flex items-baseline gap-3">
+                          <span className="font-serif text-6xl text-foreground tracking-tight">
+                            {rating.overall_score}
+                          </span>
+                          <span className="text-2xl text-neutral-300 font-light">/10</span>
+                        </div>
+                      </div>
+                      
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-100">
+                        <div
+                          className="h-full rounded-full bg-neutral-900 transition-all duration-1000 ease-out"
+                          style={{ width: `${Math.min(Math.max(rating.overall_score * 10, 0), 100)}%` }}
+                        />
+                      </div>
+                      
+                      <p className="text-base leading-relaxed text-neutral-600 border-l-2 border-neutral-200 pl-4 py-1">
+                        {rating.summary}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
 
-                {generatedAbsolute.length > 0 && (
-                  <div className="mt-6">
-                    <h3 className="mb-3 font-serif text-lg font-medium text-neutral-900">Generated images</h3>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      {generatedAbsolute.map((u, idx) => (
-                        <a
-                          key={u}
-                          href={u}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="block rounded-xl border border-neutral-200 bg-white p-3 transition-shadow hover:shadow-md"
-                        >
-                          <p className="mb-2 text-xs uppercase tracking-wider text-neutral-500">Variant {idx + 1}</p>
-                          <img
-                            src={u}
-                            alt={`Generated ${idx + 1}`}
-                            className="h-52 w-full rounded-lg border border-neutral-100 object-cover"
-                          />
-                          <p className="mt-2 text-xs text-neutral-500">Click to open full size</p>
-                        </a>
+              {/* Right Column: Breakdown Grid */}
+              <div className="lg:col-span-7">
+                {rating?.breakdown && Object.keys(rating.breakdown).length > 0 ? (
+                  <div className="bg-white rounded-[2rem] p-8 md:p-10 border border-neutral-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
+                     <h3 className="mb-10 font-serif text-2xl text-foreground">Analysis Breakdown</h3>
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-12">
+                      {Object.entries(rating.breakdown).map(([k, v]) => (
+                        <div key={k} className="group flex flex-col gap-3">
+                          <p className="text-xs font-semibold uppercase tracking-widest text-neutral-400 group-hover:text-neutral-900 transition-colors">
+                            {k.replaceAll("_", " ")}
+                          </p>
+                          <div className="flex items-center gap-1.5">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                              <Star
+                                key={i}
+                                className={cn(
+                                  "w-6 h-6 transition-all duration-300",
+                                  i < Math.round(v / 2)
+                                    ? "fill-neutral-900 text-neutral-900"
+                                    : "fill-neutral-100 text-neutral-100 group-hover:fill-neutral-200 group-hover:text-neutral-200"
+                                )}
+                                strokeWidth={1.5}
+                              />
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
+                ) : !busy && (
+                  <div className="h-full flex items-center justify-center p-12 text-neutral-300 border-2 border-dashed border-neutral-100 rounded-3xl">
+                    <p>Details will appear here...</p>
+                  </div>
                 )}
-              </section>
-            </>
-          )}
+              </div>
+            </section>
+          ) : sessionLoaded ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
+              <div className="p-4 rounded-full bg-neutral-100">
+                <Sparkles className="w-8 h-8 text-neutral-400" />
+              </div>
+              <div className="space-y-2">
+                <h2 className="font-serif text-2xl text-foreground">No Active Session</h2>
+                <p className="text-neutral-500 max-w-xs mx-auto">
+                  Start by uploading a photo of your room on the homepage.
+                </p>
+              </div>
+              <Link
+                href="/"
+                className="inline-flex items-center gap-2 px-8 py-3 bg-neutral-900 text-white rounded-full font-medium hover:bg-black hover:scale-105 transition-all duration-300"
+              >
+                <span>Go to Homepage</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+          ) : null}
         </div>
       </main>
 
       <ChatSidebar
         value={userExtra}
         onChange={setUserExtra}
-        messages={messages}
-        selectedSuggestionIds={selectedIds}
-        onToggleSuggestion={(id) => {
-          setSelectedIds((prev) => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-          });
-        }}
-        onSubmit={(text) => {
-          setMessages((prev) => [
-            ...prev,
-            { id: Date.now().toString(), role: "user", content: text }
-          ]);
-          setAdditionalChanges((prev) => (prev ? `${prev}\n${text}` : text));
-          setUserExtra("");
-        }}
+        placeholder='e.g. "Scandinavian minimal, warm natural light"'
+        label="Extra style prompt (optional)"
       />
     </div>
   );
