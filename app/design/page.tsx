@@ -78,7 +78,24 @@ export default function DesignPage() {
   const [isChatOpen, setIsChatOpen] = useState(true);
   const [isShopOpen, setIsShopOpen] = useState(false);
   const [shopItems, setShopItems] = useState<ShopItem[] | undefined>(undefined);
+  const [isResizing, setIsResizing] = useState(false);
   const router = useRouter();
+
+  // Resize Handlers
+  const handleResizeStart = useCallback(() => setIsResizing(true), []);
+  const handleResizeEnd = useCallback(() => setIsResizing(false), []);
+
+  // Helper to open shop (closes chat)
+  const openShop = useCallback(() => {
+    setIsShopOpen(true);
+    setIsChatOpen(false);
+  }, []);
+
+  // Helper to open chat (closes shop)
+  const openChat = useCallback(() => {
+    setIsChatOpen(true);
+    setIsShopOpen(false);
+  }, []);
 
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasAutoRatedRef = useRef(false);
@@ -207,7 +224,7 @@ export default function DesignPage() {
         { id: Date.now().toString(), role: "user", content: trimmed },
       ]);
       setUserExtra("");
-      setAdditionalChanges(additionalChanges + "\n" + trimmed);
+      setAdditionalChanges((prev) => prev + "\n" + trimmed);
     },
     []
   );
@@ -379,12 +396,10 @@ export default function DesignPage() {
 
 
   return (
-    <div className="flex min-h-screen bg-white">
-      <main className="flex-1 overflow-auto relative">
-        <div className="fixed bottom-6 left-6 z-40">
-          <Agent agents={VOICE_AGENTS} className="w-[360px] bg-white/95 backdrop-blur" />
-        </div>
     <div className="flex h-screen bg-white overflow-hidden">
+      <div className="fixed bottom-6 left-6 z-40">
+        <Agent agents={VOICE_AGENTS} className="w-[360px] bg-white/95 backdrop-blur" />
+      </div>
       {/* Shop Sidebar (Left) */}
       <ShopSidebar
         className="h-full z-40 bg-white/95 border-r border-neutral-100 shadow-none"
@@ -392,12 +407,9 @@ export default function DesignPage() {
         onAddItem={(name) => setShopItems((prev) => [...(prev ?? []), { id: `${Date.now()}`, name, price: "TBD" }])}
         onResetWidth={() => {}}
         isOpen={isShopOpen}
-        onToggle={() => {
-          if (!isShopOpen) {
-            setIsShopOpen(true);
-            setIsChatOpen(false);
-          }
-        }}
+        onOpenChat={openChat}
+        onResizeStart={handleResizeStart}
+        onResizeEnd={handleResizeEnd}
       />
 
       <main className="flex-1 relative overflow-auto min-w-0 transition-all duration-300 ease-in-out">
@@ -405,32 +417,15 @@ export default function DesignPage() {
 
         {/* Start Over Button - Moved to Top Right */}
         {sessionId && (
-          <div className="absolute top-8 right-8 z-50">
-            <button
-              type="button"
-              onClick={() => {
-                if (isResetExpanded) {
-                  resetAll();
-                } else {
-                  setIsResetExpanded(true);
-                }
-              }}
-              onMouseLeave={() => setIsResetExpanded(false)}
-              className={cn(
-                "flex items-center justify-center rounded-full bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] hover:shadow-xl transition-all duration-300 ease-in-out border border-neutral-100",
-                isResetExpanded ? "pl-3 pr-5 py-3 gap-2" : "w-12 h-12"
-              )}
-            >
-              <RotateCcw className={cn("w-5 h-5 text-neutral-900", isResetExpanded ? "rotate-[-180deg] transition-transform duration-500" : "")} />
-              <span className={cn(
-                "text-sm font-medium text-neutral-900 whitespace-nowrap overflow-hidden transition-all duration-300",
-                isResetExpanded ? "max-w-[100px] opacity-100" : "max-w-0 opacity-0"
-              )}>
-                Start Over
-              </span>
-            </button>
+          <div className="absolute top-8 right-8 z-50 flex items-center gap-4">
+            <Agent agents={VOICE_AGENTS} />
           </div>
         )}
+      <main className={cn(
+        "flex-1 relative overflow-auto min-w-0",
+        !isResizing && "transition-all duration-300 ease-in-out"
+      )}>
+
 
         <div className="relative z-10 mx-auto max-w-360 space-y-8 p-8 md:p-12">
           <div className="flex flex-row items-center gap-4">
@@ -452,7 +447,7 @@ export default function DesignPage() {
                      src={viewMode === 'original' ? displayImageUrl : (afterImageUrl || displayImageUrl)}
                      alt={viewMode === 'original' ? "Original room" : "Curated room"}
                      className={cn(
-                       "max-h-full max-w-full w-auto h-auto object-contain rounded-lg shadow-[0_20px_50px_-12px_rgba(0,0,0,0.25)] ring-1 ring-black/10 transition-all duration-500",
+                       "max-h-full max-w-full object-contain rounded-lg shadow-[0_20px_50px_-12px_rgba(0,0,0,0.25)] ring-1 ring-black/10 transition-all duration-500",
                        viewMode === 'after' && !afterImageUrl && "opacity-50 blur-sm scale-105"
                      )}
                    />
@@ -623,15 +618,11 @@ export default function DesignPage() {
         onProductsGenerated={handleProductsGenerated}
         onResetWidth={() => {}}
         isOpen={isChatOpen}
-        onToggle={() => {
-          if (!isChatOpen) {
-            setIsChatOpen(true);
-            setIsShopOpen(false);
-          }
-        }}
+        onOpenShop={afterImageUrl ? openShop : undefined}
+        onToggle={openChat}
+        onResizeStart={handleResizeStart}
+        onResizeEnd={handleResizeEnd}
       />
-    </div>
-      </main>
     </div>
   );
 }

@@ -20,7 +20,9 @@ type ShopSidebarProps = {
   onAddItem?: (item: string) => void;
   onResetWidth?: () => void;
   isOpen?: boolean;
-  onToggle?: () => void;
+  onOpenChat?: () => void;
+  onResizeStart?: () => void;
+  onResizeEnd?: () => void;
 };
 
 // Sample data for fallback
@@ -38,7 +40,9 @@ export function ShopSidebar({
   onAddItem,
   onResetWidth,
   isOpen = false,
-  onToggle,
+  onOpenChat,
+  onResizeStart,
+  onResizeEnd,
 }: ShopSidebarProps) {
   const sidebarRef = useRef<HTMLElement>(null);
   const [width, setWidth] = useState(400); // Default width
@@ -97,6 +101,13 @@ export function ShopSidebar({
     fetchProducts();
   }, [productQueries, items]);
 
+  // Initialize width to 30% of screen on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setWidth(window.innerWidth * 0.3);
+    }
+  }, []);
+
   // Resize logic
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -107,6 +118,7 @@ export function ShopSidebar({
 
     const handleMouseUp = () => {
       setIsResizing(false);
+      onResizeEnd?.();
       document.body.style.cursor = "default";
       document.body.style.userSelect = "auto";
     };
@@ -138,33 +150,30 @@ export function ShopSidebar({
       ref={sidebarRef}
       style={{ width: isOpen ? width : 0 }}
       className={cn(
-        "flex flex-col border-r border-neutral-200 bg-[#F3F1E7]/50 backdrop-blur-sm relative transition-[width] duration-300 ease-in-out",
+        "flex flex-col border-r border-neutral-200 bg-[#FDFBF7] backdrop-blur-sm relative",
+        !isResizing && "transition-[width] duration-300 ease-in-out",
         "h-full shrink-0",
         className
       )}
     >
-      {/* Toggle Handle - Centered on border */}
-      <button
-        onClick={onToggle}
-        className="absolute right-0 top-1/2 translate-x-full -translate-y-1/2 z-50 flex h-24 w-8 items-center justify-center rounded-r-xl border-y border-r border-neutral-200 bg-white shadow-md transition-transform hover:bg-neutral-50 active:scale-95"
-        title={isOpen ? "Close sidebar" : "Open sidebar"}
-      >
-        {!isOpen && <ChevronRight className="h-4 w-4 text-neutral-400" />}
-        {isOpen && <ChevronLeft className="h-4 w-4 text-neutral-400" />}
-      </button>
-
-      <div className={cn("flex flex-col h-full w-full overflow-hidden", !isOpen && "invisible")}>
+      <div className={cn("flex flex-col h-full w-full overflow-hidden")}>
         {/* Resize Handle */}
         <div
           className="absolute -right-1 top-0 w-3 h-full cursor-col-resize z-40 flex items-center justify-center group touch-none hover:bg-black/5 transition-colors"
           onMouseDown={(e) => {
             e.preventDefault();
             setIsResizing(true);
+            onResizeStart?.();
           }}
         />
 
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-neutral-200/50 px-6 py-4 shrink-0 bg-white/50">
+      <div 
+        className={cn(
+          "flex items-center justify-between border-b border-neutral-200/50 px-6 py-4 shrink-0 bg-white/50 transition-all duration-500 ease-in-out",
+          isOpen ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4"
+        )}
+      >
         <div className="flex items-center gap-2">
           <ShoppingBag className="w-4 h-4 text-neutral-900" />
           <span className="text-sm font-medium uppercase tracking-widest text-neutral-900">
