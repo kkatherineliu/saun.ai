@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { ArrowUp, GripVertical, Check, Loader2, ChevronLeft, ChevronRight, PanelRightClose } from "lucide-react";
+import { ArrowUp, GripVertical, Check, Loader2, ChevronLeft, ChevronRight, PanelRightClose, ShoppingBag } from "lucide-react";
 
 export type Suggestion = {
   id: string;
@@ -42,6 +42,9 @@ type ChatSidebarProps = {
   onResetWidth?: () => void;
   isOpen?: boolean;
   onToggle?: () => void;
+  onOpenShop?: () => void;
+  onResizeStart?: () => void;
+  onResizeEnd?: () => void;
 };
 
 export function ChatSidebar({
@@ -59,11 +62,23 @@ export function ChatSidebar({
   onResetWidth,
   isOpen = true,
   onToggle,
+  onOpenShop,
+  onResizeStart,
+  onResizeEnd,
 }: ChatSidebarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
-  const [width, setWidth] = useState(350); // Default max width
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(400); // Default width before hydration
   const [isResizing, setIsResizing] = useState(false);
+  const [isShopHovered, setIsShopHovered] = useState(false);
+
+  // Initialize width to 30% of screen on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setWidth(window.innerWidth * 0.3);
+    }
+  }, []);
 
   // Resize logic
   useEffect(() => {
@@ -77,6 +92,7 @@ export function ChatSidebar({
 
     const handleMouseUp = () => {
       setIsResizing(false);
+      onResizeEnd?.();
       document.body.style.cursor = "default";
       document.body.style.userSelect = "auto";
     };
@@ -94,6 +110,13 @@ export function ChatSidebar({
     };
   }, [isResizing]);
 
+  useEffect(() => {
+    if (!messagesRef.current) return;
+    messagesRef.current.scrollTo({
+      top: messagesRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [messages.length]);
   // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
@@ -117,51 +140,61 @@ export function ChatSidebar({
       ref={sidebarRef}
       style={{ width: isOpen ? width : 0 }}
       className={cn(
-        "flex flex-col border-l border-neutral-200 bg-[#F3F1E7]/50 backdrop-blur-sm relative transition-[width] duration-300 ease-in-out",
+        "flex flex-col border-l border-neutral-200 bg-[#FDFBF7] backdrop-blur-sm relative",
+        !isResizing && "transition-[width] duration-300 ease-in-out",
         "h-full shrink-0", 
         className
       )}
     >
       {/* Toggle Handle - Centered on border */}
-      <button
-        onClick={onToggle}
-        className="absolute left-0 top-1/2 -translate-x-full -translate-y-1/2 z-50 flex h-24 w-8 items-center justify-center rounded-l-xl border-y border-l border-neutral-200 bg-white shadow-md transition-transform hover:bg-neutral-50 active:scale-95"
-        title={isOpen ? "Close sidebar" : "Open sidebar"}
-      >
-        {!isOpen && <ChevronLeft className="h-4 w-4 text-neutral-400" />}
-        {isOpen && <ChevronRight className="h-4 w-4 text-neutral-400" />}
-      </button>
+      {!isOpen && (
+        <button
+          onClick={onToggle}
+          className="absolute left-0 top-1/2 -translate-x-full -translate-y-1/2 z-50 flex h-24 w-8 items-center justify-center rounded-l-3xl border-y border-l border-neutral-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] transition-all hover:scale-105 hover:bg-neutral-50 active:scale-95 active:bg-neutral-100"
+          title="Open sidebar"
+        >
+          <ChevronLeft className="h-5 w-5 text-neutral-400" strokeWidth={2.5} />
+        </button>
+      )}
 
-      <div className={cn("flex flex-col h-full w-full overflow-hidden", !isOpen && "invisible")}>
+      <div className={cn("flex flex-col h-full w-full overflow-hidden")}>
         {/* Resize Handle */}
         <div
           className="absolute -left-1 top-0 w-3 h-full cursor-col-resize z-40 flex items-center justify-center group touch-none hover:bg-black/5 transition-colors"
           onMouseDown={(e) => {
             e.preventDefault();
             setIsResizing(true);
+            onResizeStart?.();
           }}
         />
 
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-neutral-200/50 px-6 py-4 shrink-0">
+        <div 
+          className={cn(
+            "flex items-center justify-between border-b border-neutral-200/50 px-6 py-4 shrink-0 transition-all duration-500 ease-in-out",
+            isOpen ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4"
+          )}
+        >
           <span className="text-xs font-medium uppercase tracking-widest text-neutral-500">
             {label}
           </span>
       </div>
 
       {/* Messages Area - Scrollable */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6 scrollbar-hide [&::-webkit-scrollbar]:hidden">
-        {messages.map((msg) => {
+      <div ref={messagesRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-6 scrollbar-hide [&::-webkit-scrollbar]:hidden">
+        {messages.map((msg, i) => {
           const hasSuggestions = msg.suggestions && msg.suggestions.length > 0;
           
           return (
             <div
               key={msg.id}
+              style={{ transitionDelay: `${i * 50}ms` }}
               className={cn(
-                "flex flex-col gap-2 text-sm",
+                "flex flex-col gap-2 text-sm transition-all duration-500 ease-in-out",
                 hasSuggestions 
                   ? "w-full" 
-                  : cn("max-w-[95%]", msg.role === "user" ? "ml-auto items-end" : "mr-auto items-start")
+                  : cn("max-w-[95%]", msg.role === "user" ? "ml-auto items-end" : "mr-auto items-start"),
+                isOpen ? "opacity-100 translate-x-0" : "opacity-0 translate-x-8"
               )}
             >
               {hasSuggestions ? (
@@ -237,7 +270,12 @@ export function ChatSidebar({
       </div>
 
       {/* Input Area - Fixed at bottom */}
-      <div className="px-6 py-4 pt-2 shrink-0">
+      <div 
+        className={cn(
+          "px-6 py-4 pt-2 shrink-0 relative transition-all duration-700 ease-in-out delay-200",
+          isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+        )}
+      >
         <div className="relative flex items-end gap-2 rounded-xl border border-neutral-300 bg-white p-2 shadow-sm focus-within:ring-1 focus-within:ring-neutral-900 transition-shadow">
           <textarea
             ref={textareaRef}
@@ -251,30 +289,52 @@ export function ChatSidebar({
             aria-label={label}
             disabled={onChange === undefined}
           />
-          <button
-            className="mb-1 rounded-lg bg-neutral-900 p-2 text-white hover:bg-neutral-800 disabled:opacity-50 transition-colors"
-            disabled={!value.trim()}
-            onClick={() => value.trim() && onSubmit?.(value)}
-          >
-            <ArrowUp className="h-4 w-4" />
-          </button>
         </div>
         
-        <button
-          type="button"
-          onClick={onCurate}
-          className={cn(
-            "mt-3 w-full rounded-full border border-neutral-900 bg-neutral-900 px-6 py-3",
-            "font-serif text-sm tracking-[0.2em] uppercase text-[#F3F1E7] transition-colors",
-            "hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+        {/* Curate / Shop Action Bar */}
+        <div className="mt-3 flex w-full h-12 rounded-full border border-neutral-900 bg-neutral-900 overflow-hidden shadow-sm relative isolate">
+          {onOpenShop && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenShop();
+              }}
+              className={cn(
+                "relative z-20 flex items-center justify-center bg-neutral-800 hover:bg-neutral-700 text-white transition-all duration-300 ease-out border-r border-neutral-700/50",
+                isShopHovered ? "w-full border-r-0" : "w-14"
+              )}
+              onMouseEnter={() => setIsShopHovered(true)}
+              onMouseLeave={() => setIsShopHovered(false)}
+            >
+              <ShoppingBag className="w-4 h-4 shrink-0" />
+              <span 
+                className={cn(
+                  "font-serif text-sm tracking-[0.2em] uppercase whitespace-nowrap overflow-hidden transition-all duration-300",
+                  isShopHovered ? "ml-2 max-w-[200px] opacity-100" : "max-w-0 opacity-0"
+                )}
+              >
+                Shop Now!
+              </span>
+            </button>
           )}
-          disabled={!onCurate || isCurating}
-        >
-          <span className="inline-flex items-center justify-center gap-2">
-            {isCurating && <Loader2 className="h-4 w-4 animate-spin" />}
-            {isCurating ? "Curating..." : "Curate"}
-          </span>
-        </button>
+
+          <button
+            type="button"
+            onClick={onCurate}
+            disabled={!onCurate || isCurating}
+            className={cn(
+              "relative z-10 flex items-center justify-center text-[#F3F1E7] font-serif text-sm tracking-[0.2em] uppercase transition-all duration-300 hover:bg-black",
+              isShopHovered ? "w-0 p-0 opacity-0 overflow-hidden border-0" : "flex-1",
+              (!onCurate || isCurating) && "cursor-not-allowed opacity-50"
+            )}
+          >
+            <span className="inline-flex items-center justify-center gap-2">
+              {isCurating && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isCurating ? "Curating..." : "Curate"}
+            </span>
+          </button>
+        </div>
 
       </div>
       </div>
