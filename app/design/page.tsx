@@ -338,6 +338,15 @@ export default function DesignPage() {
         onResizeEnd={handleResizeEnd}
       />
 
+      <main className="flex-1 relative overflow-auto min-w-0 transition-all duration-300 ease-in-out">
+
+
+        {/* Start Over Button - Moved to Top Right */}
+        {sessionId && (
+          <div className="absolute top-8 right-8 z-50 flex items-center gap-4">
+            <Agent agents={VOICE_AGENTS} />
+          </div>
+        )}
       <main className={cn(
         "flex-1 relative overflow-auto min-w-0",
         !isResizing && "transition-all duration-300 ease-in-out"
