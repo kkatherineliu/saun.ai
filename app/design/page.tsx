@@ -2,20 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ChatSidebar } from "@/components/ChatSidebar";
+import { ChatSidebar, type Message, type Suggestion } from "@/components/ChatSidebar";
 import { cn } from "@/lib/utils";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001";
 const DESIGN_SESSION_KEY = "saun-design-session";
-
-type Suggestion = {
-  id: string;
-  title: string;
-  why: string;
-  impact: string;
-  effort: string;
-  steps?: string[];
-};
 
 type RatingResult = {
   overall_score: number;
@@ -41,6 +32,7 @@ export default function DesignPage() {
   const [numVariations, setNumVariations] = useState(2);
   const [job, setJob] = useState<JobStatus | null>(null);
   const [generated, setGenerated] = useState<string[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -103,6 +95,17 @@ export default function DesignPage() {
       setRating(data as RatingResult);
       const top = (data?.suggestions ?? []).slice(0, 2).map((s: Suggestion) => s.id);
       setSelectedIds(new Set(top));
+
+      // Add assistant message with suggestions
+      setMessages(prev => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: "assistant",
+          content: `I've analyzed your room! It has a score of ${data.overall_score}/10. ${data.summary}\n\nHere are my suggestions for improvement:`,
+          suggestions: data.suggestions
+        }
+      ]);
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : String(e));
     } finally {
@@ -277,63 +280,7 @@ export default function DesignPage() {
                     ))}
                   </div>
                 )}
-
-                <div>
-                  <h3 className="mb-3 font-serif text-lg font-medium text-neutral-900">
-                    Suggestions (select what to apply)
-                  </h3>
-                  <div className="space-y-3">
-                    {(rating.suggestions ?? []).map((s) => {
-                      const checked = selectedIds.has(s.id);
-                      return (
-                        <label
-                          key={s.id}
-                          className={cn(
-                            "flex cursor-pointer gap-3 rounded-xl border border-neutral-200 bg-white p-4 transition-colors hover:border-neutral-300",
-                            checked && "border-neutral-900 ring-1 ring-neutral-900"
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => {
-                              setSelectedIds((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(s.id)) next.delete(s.id);
-                                else next.add(s.id);
-                                return next;
-                              });
-                            }}
-                            className="mt-1 h-4 w-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="font-medium text-neutral-900">
-                                {s.title}{" "}
-                                <span className="font-normal text-neutral-500">
-                                  ({s.id})
-                                </span>
-                              </span>
-                              <span className="text-xs text-neutral-500">
-                                impact: <strong>{s.impact}</strong> • effort:{" "}
-                                <strong>{s.effort}</strong>
-                              </span>
-                            </div>
-                            <p className="mt-1 text-sm text-neutral-600">{s.why}</p>
-                            {s.steps && s.steps.length > 0 && (
-                              <ul className="mt-2 list-inside list-disc space-y-0.5 pl-2 text-sm text-neutral-600">
-                                {s.steps.slice(0, 4).map((st, idx) => (
-                                  <li key={idx}>{st}</li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
                 </div>
-              </div>
             )}
           </section>
 
@@ -420,8 +367,23 @@ export default function DesignPage() {
       <ChatSidebar
         value={userExtra}
         onChange={setUserExtra}
-        placeholder='e.g. "Scandinavian minimal, warm natural light"'
-        label="Extra style prompt (optional)"
+        messages={messages}
+        selectedSuggestionIds={selectedIds}
+        onToggleSuggestion={(id) => {
+          setSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+          });
+        }}
+        onSubmit={(text) => {
+          setMessages((prev) => [
+            ...prev,
+            { id: Date.now().toString(), role: "user", content: text }
+          ]);
+          setUserExtra("");
+        }}
       />
     </div>
   );
