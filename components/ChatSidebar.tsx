@@ -46,9 +46,7 @@ export function ChatSidebar({
   placeholder = "Style requests...",
   label = "Style prompt",
   className,
-  messages = [
-    { id: "1", role: "assistant", content: "Hello! I'm your design assistant. Describe your ideal space or ask for suggestions." }
-  ],
+  messages = [],
   selectedSuggestionIds = new Set(),
   onToggleSuggestion,
   onSubmit,
@@ -130,92 +128,101 @@ export function ChatSidebar({
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-neutral-200/50 p-4 shrink-0">
+      <div className="flex items-center justify-between border-b border-neutral-200/50 px-6 py-4 shrink-0">
         <span className="text-xs font-medium uppercase tracking-widest text-neutral-500">
           {label}
         </span>
       </div>
 
       {/* Messages Area - Scrollable */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide [&::-webkit-scrollbar]:hidden">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={cn(
-              "flex flex-col gap-2 text-sm max-w-[95%]",
-              msg.role === "user" ? "ml-auto items-end" : "mr-auto items-start"
-            )}
-          >
+      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6 scrollbar-hide [&::-webkit-scrollbar]:hidden">
+        {messages.map((msg) => {
+          const hasSuggestions = msg.suggestions && msg.suggestions.length > 0;
+          
+          return (
             <div
+              key={msg.id}
               className={cn(
-                "rounded-2xl px-4 py-3 leading-relaxed",
-                msg.role === "user"
-                  ? "bg-[#121212] text-[#F3F1E7] rounded-br-sm" // Chic Black Bubble
-                  : "bg-white border border-neutral-200 text-neutral-800 rounded-bl-sm shadow-sm" // Chic White Bubble
+                "flex flex-col gap-2 text-sm",
+                hasSuggestions 
+                  ? "w-full" 
+                  : cn("max-w-[95%]", msg.role === "user" ? "ml-auto items-end" : "mr-auto items-start")
               )}
             >
-              <div className="whitespace-pre-wrap">{msg.content}</div>
+              {hasSuggestions ? (
+                /* Result View: Content and Suggestions separated */
+                <div className="flex flex-col gap-6 w-full">
+                  {/* Summary/Rating Box */}
+                  <div className="bg-white border border-neutral-200 text-neutral-800 rounded-2xl rounded-bl-sm shadow-sm px-4 py-3 leading-relaxed">
+                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                  </div>
 
-              {/* Suggestions Grid */}
-              {msg.suggestions && msg.suggestions.length > 0 && (
-                <div className="mt-4 flex flex-col gap-2">
-                  <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-1">
-                    Suggested Improvements
-                  </p>
-                  {msg.suggestions.map((s) => {
-                    const isSelected = selectedSuggestionIds.has(s.id);
-                    return (
-                      <button
-                        key={s.id}
-                        onClick={() => onToggleSuggestion?.(s.id)}
-                        className={cn(
-                          "group relative flex flex-col items-start w-full text-left transition-all duration-300",
-                          "rounded-xl border p-3 hover:shadow-md",
-                          isSelected 
-                            ? "bg-neutral-900 border-neutral-900 text-white" 
-                            : "bg-white border-neutral-200 text-neutral-900 hover:border-neutral-300"
-                        )}
-                      >
-                        {/* Header Line */}
-                        <div className="flex items-center justify-between w-full gap-2">
-                          <span className="font-medium text-sm">{s.title}</span>
-                          <div className={cn(
-                            "w-5 h-5 rounded-full border flex items-center justify-center transition-colors shrink-0",
+                  {/* Suggestions List */}
+                  <div className="flex flex-col gap-3">
+                    {msg.suggestions!.map((s) => {
+                      const isSelected = selectedSuggestionIds.has(s.id);
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => onToggleSuggestion?.(s.id)}
+                          className={cn(
+                            "group relative flex flex-col items-start w-full text-left transition-all duration-300",
+                            "rounded-xl border p-3 hover:shadow-lg",
                             isSelected 
-                              ? "border-white bg-white text-black" 
-                              : "border-neutral-300 group-hover:border-neutral-400"
-                          )}>
-                             {isSelected && <Check className="w-3 h-3" />}
+                              ? "bg-white border-neutral-900 text-neutral-900 scale-[1.02] z-10 ring-1 ring-neutral-900/5" 
+                              : "bg-white border-neutral-200 text-neutral-900 hover:border-neutral-300"
+                          )}
+                        >
+                          {/* Header Line */}
+                          <div className="flex items-center justify-between w-full gap-2">
+                            <span className="font-medium text-sm">{s.title}</span>
+                            <div className={cn(
+                              "w-5 h-5 rounded-full border flex items-center justify-center transition-colors shrink-0",
+                              isSelected 
+                                ? "border-neutral-900 bg-neutral-900 text-white" 
+                                : "border-neutral-300 group-hover:border-neutral-400"
+                            )}>
+                               {isSelected && <Check className="w-3 h-3" />}
+                            </div>
                           </div>
-                        </div>
 
-                        {/* Expandable Content */}
-                        <div className="grid grid-rows-[0fr] group-hover:grid-rows-[1fr] transition-[grid-template-rows] duration-300 w-full">
-                           <div className="overflow-hidden">
-                             <div className={cn(
-                               "pt-3 text-xs leading-relaxed space-y-2",
-                               isSelected ? "text-neutral-300" : "text-neutral-600"
-                             )}>
-                               <p>{s.why}</p>
-                               <div className="flex gap-3 text-[10px] uppercase tracking-wider opacity-80">
-                                 <span>Impact: <b>{s.impact}</b></span>
-                                 <span>Effort: <b>{s.effort}</b></span>
+                          {/* Expandable Content */}
+                          <div className="grid grid-rows-[0fr] group-hover:grid-rows-[1fr] transition-[grid-template-rows] duration-300 w-full">
+                             <div className="overflow-hidden">
+                               <div className="pt-3 text-xs leading-relaxed space-y-2 text-neutral-600">
+                                 <p>{s.why}</p>
+                                 <div className="flex gap-3 text-[10px] uppercase tracking-wider opacity-80">
+                                   <span>Impact: <b>{s.impact}</b></span>
+                                   <span>Effort: <b>{s.effort}</b></span>
+                                 </div>
                                </div>
                              </div>
-                           </div>
-                        </div>
-                      </button>
-                    );
-                  })}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                /* Standard Chat Bubble */
+                <div
+                  className={cn(
+                    "rounded-2xl px-4 py-3 leading-relaxed",
+                    msg.role === "user"
+                      ? "bg-[#121212] text-[#F3F1E7] rounded-br-sm" // Chic Black Bubble
+                      : "bg-white border border-neutral-200 text-neutral-800 rounded-bl-sm shadow-sm" // Chic White Bubble
+                  )}
+                >
+                  <div className="whitespace-pre-wrap">{msg.content}</div>
                 </div>
               )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Input Area - Fixed at bottom */}
-      <div className="p-4 pt-2 shrink-0">
+      <div className="px-6 py-4 pt-2 shrink-0">
         <div className="relative flex items-end gap-2 rounded-xl border border-neutral-300 bg-white p-2 shadow-sm focus-within:ring-1 focus-within:ring-neutral-900 transition-shadow">
           <textarea
             ref={textareaRef}
