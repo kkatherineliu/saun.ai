@@ -122,10 +122,6 @@ export default function DesignPage() {
   useEffect(() => {
     if (!rating) return;
 
-    if (selectedIds.size === 0 && rating.suggestions?.length) {
-      setSelectedIds(new Set(rating.suggestions.slice(0, 2).map((s) => s.id)));
-    }
-
     setMessages((prev) => {
       const hasSuggestions = prev.some((msg) => (msg.suggestions ?? []).length > 0);
       if (hasSuggestions) return prev;
@@ -139,7 +135,7 @@ export default function DesignPage() {
         },
       ];
     });
-  }, [rating, selectedIds.size]);
+  }, [rating]);
 
   const originalAbsolute = useMemo(() => {
     if (!originalUrl) return null;
@@ -192,28 +188,10 @@ export default function DesignPage() {
         { id: Date.now().toString(), role: "user", content: trimmed },
       ]);
       setUserExtra("");
+      setAdditionalChanges(additionalChanges + "\n" + trimmed);
     },
     []
   );
-
-  const rate = useCallback(async () => {
-    if (!sessionId) return alert("Upload first.");
-    setBusy("Rating...");
-    try {
-      const res = await fetch(`${apiBase}/api/sessions/${sessionId}/rate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ criteria: [] }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error((data?.error?.message as string) ?? "Rate failed");
-      applyRating(data as RatingResult);
-    } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(null);
-    }
-  }, [applyRating, sessionId]);
 
   const startPolling = useCallback((jobId: string) => {
     if (pollTimer.current) clearInterval(pollTimer.current);
@@ -297,6 +275,8 @@ export default function DesignPage() {
       alert(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
+      setAdditionalChanges("");
+      setUserExtra("");
     }
   }, [additionalChanges, numVariations, rating, selectedIds, sessionId, startPolling, userExtra]);
 

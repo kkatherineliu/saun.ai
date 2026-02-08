@@ -56,6 +56,7 @@ export function ChatSidebar({
 }: ChatSidebarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(600); // Default max width
   const [isResizing, setIsResizing] = useState(false);
 
@@ -96,6 +97,14 @@ export function ChatSidebar({
       textareaRef.current.style.height = `${Math.min(Math.max(newHeight, 44), 200)}px`;
     }
   }, [value]);
+
+  useEffect(() => {
+    if (!messagesRef.current) return;
+    messagesRef.current.scrollTo({
+      top: messagesRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [messages.length]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -138,7 +147,10 @@ export function ChatSidebar({
       </div>
 
       {/* Messages Area - Scrollable */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6 scrollbar-hide [&::-webkit-scrollbar]:hidden">
+      <div
+        ref={messagesRef}
+        className="flex-1 overflow-y-auto px-6 py-4 space-y-6 scrollbar-hide [&::-webkit-scrollbar]:hidden"
+      >
         {messages.map((msg) => {
           const hasSuggestions = msg.suggestions && msg.suggestions.length > 0;
           
@@ -239,13 +251,6 @@ export function ChatSidebar({
             aria-label={label}
             disabled={onChange === undefined}
           />
-          <button
-            className="mb-1 rounded-lg bg-neutral-900 p-2 text-white hover:bg-neutral-800 disabled:opacity-50 transition-colors"
-            disabled={!value.trim()}
-            onClick={() => value.trim() && onSubmit?.(value)}
-          >
-            <ArrowUp className="h-4 w-4" />
-          </button>
         </div>
         
         <button
