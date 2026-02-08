@@ -22,6 +22,22 @@ type JobStatus = {
   error?: string | null;
 };
 
+type StoredSession = {
+  session_id?: string;
+  original_image_url?: string | null;
+  rating_result?: RatingResult | null;
+};
+
+type SessionApiResponse = {
+  rating_result?: RatingResult | null;
+};
+
+function toTitleCase(value: string) {
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
 export default function DesignPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -29,6 +45,7 @@ export default function DesignPage() {
   const [rating, setRating] = useState<RatingResult | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [userExtra, setUserExtra] = useState("");
+  const [additionalChanges, setAdditionalChanges] = useState("");
   const [numVariations, setNumVariations] = useState(2);
   const [job, setJob] = useState<JobStatus | null>(null);
   const [generated, setGenerated] = useState<string[]>([]);
@@ -36,27 +53,82 @@ export default function DesignPage() {
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Restore session passed from home page (after Analyze Photo)
+  const applyRating = useCallback((result: RatingResult | null) => {
+    setRating(result);
+    if (!result) {
+      setSelectedIds(new Set());
+      return;
+    }
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       const raw = sessionStorage.getItem(DESIGN_SESSION_KEY);
       if (raw) {
-        const { session_id, original_image_url } = JSON.parse(raw) as {
-          session_id?: string;
-          original_image_url?: string | null;
-        };
-        if (session_id) {
-          setSessionId(session_id);
-          if (original_image_url) setOriginalUrl(original_image_url);
+        const parsed = JSON.parse(raw) as StoredSession;
+        if (parsed.session_id) {
+          setSessionId(parsed.session_id);
+        }
+        if (parsed.original_image_url) {
+          setOriginalUrl(parsed.original_image_url);
+        }
+        if (parsed.rating_result) {
+          applyRating(parsed.rating_result);
         }
       }
     } catch {
-      // ignore
+      // ignore session restore errors
     } finally {
       setSessionLoaded(true);
     }
-  }, []);
+  }, [applyRating]);
+
+  useEffect(() => {
+    if (!sessionLoaded || !sessionId || rating) return;
+    let cancelled = false;
+
+    const hydrate = async () => {
+      setBusy("Loading session...");
+      try {
+        const res = await fetch(`${apiBase}/api/sessions/${sessionId}`);
+        const data = (await res.json()) as SessionApiResponse;
+        if (!res.ok || cancelled) return;
+        applyRating(data.rating_result ?? null);
+      } catch {
+        // ignore load failures
+      } finally {
+        if (!cancelled) setBusy(null);
+      }
+    };
+
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyRating, rating, sessionId, sessionLoaded]);
+
+  useEffect(() => {
+    if (!rating) return;
+
+    if (selectedIds.size === 0 && rating.suggestions?.length) {
+      setSelectedIds(new Set(rating.suggestions.slice(0, 2).map((s) => s.id)));
+    }
+
+    setMessages((prev) => {
+      const hasSuggestions = prev.some((msg) => (msg.suggestions ?? []).length > 0);
+      if (hasSuggestions) return prev;
+      return [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: "assistant",
+          content: `I've analyzed your room! It has a score of ${rating.overall_score}/10. ${rating.summary}\n\nHere are my suggestions for improvement:`,
+          suggestions: rating.suggestions ?? [],
+        },
+      ];
+    });
+  }, [rating, selectedIds.size]);
 
   const originalAbsolute = useMemo(() => {
     if (!originalUrl) return null;
@@ -76,6 +148,7 @@ export default function DesignPage() {
     setRating(null);
     setSelectedIds(new Set());
     setUserExtra("");
+    setAdditionalChanges("");
     setNumVariations(2);
     setJob(null);
     setGenerated([]);
@@ -92,56 +165,61 @@ export default function DesignPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error((data?.error?.message as string) ?? "Rate failed");
-      setRating(data as RatingResult);
-      const top = (data?.suggestions ?? []).slice(0, 2).map((s: Suggestion) => s.id);
-      setSelectedIds(new Set(top));
-
-      // Add assistant message with suggestions
-      setMessages(prev => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          role: "assistant",
-          content: `I've analyzed your room! It has a score of ${data.overall_score}/10. ${data.summary}\n\nHere are my suggestions for improvement:`,
-          suggestions: data.suggestions
-        }
-      ]);
+      applyRating(data as RatingResult);
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }
-  }, [sessionId]);
+  }, [applyRating, sessionId]);
 
-  const startPolling = useCallback(
-    (jobId: string) => {
-      if (pollTimer.current) clearInterval(pollTimer.current);
-      pollTimer.current = setInterval(async () => {
-        try {
-          const res = await fetch(`${apiBase}/api/jobs/${jobId}`);
-          const data = (await res.json()) as JobStatus;
-          if (!res.ok) return;
-          setJob(data);
-          if (data.status === "done") {
-            setGenerated(data.generated_images ?? []);
-            if (pollTimer.current) clearInterval(pollTimer.current);
-            pollTimer.current = null;
-          } else if (data.status === "error") {
-            if (pollTimer.current) clearInterval(pollTimer.current);
-            pollTimer.current = null;
-          }
-        } catch {
-          // ignore
+  const startPolling = useCallback((jobId: string) => {
+    if (pollTimer.current) clearInterval(pollTimer.current);
+    pollTimer.current = setInterval(async () => {
+      try {
+        const res = await fetch(`${apiBase}/api/jobs/${jobId}`);
+        const data = (await res.json()) as JobStatus;
+        if (!res.ok) return;
+        setJob(data);
+        if (data.status === "done") {
+          setGenerated(data.generated_images ?? []);
+          if (pollTimer.current) clearInterval(pollTimer.current);
+          pollTimer.current = null;
+        } else if (data.status === "error") {
+          if (pollTimer.current) clearInterval(pollTimer.current);
+          pollTimer.current = null;
         }
-      }, 1200);
-    },
-    []
-  );
+      } catch {
+        // ignore polling errors
+      }
+    }, 1200);
+  }, []);
 
   const generate = useCallback(async () => {
-    if (!sessionId) return alert("Upload + rate first.");
-    if (!rating) return alert("Rate first.");
-    if (selectedIds.size === 0) return alert("Select at least one suggestion.");
+    if (!sessionId) return alert("Upload first.");
+    if (!rating) return alert("Rating has not loaded yet.");
+
+    const hasInputs =
+      selectedIds.size > 0 || additionalChanges.trim().length > 0 || userExtra.trim().length > 0;
+
+    if (!hasInputs) {
+      return alert("Select at least one suggestion or add additional changes.");
+    }
+
+    const additionalChangeItems = additionalChanges
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const selectedCategories = Array.from(
+      new Set(
+        (rating.suggestions ?? [])
+          .filter((s) => selectedIds.has(s.id))
+          .map((s) => s.category)
+          .filter((c): c is string => typeof c === "string")
+      )
+    );
+
     setBusy("Starting generation...");
     try {
       const res = await fetch(`${apiBase}/api/sessions/${sessionId}/generate`, {
@@ -149,12 +227,15 @@ export default function DesignPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           selected_suggestion_ids: Array.from(selectedIds),
+          selected_categories: selectedCategories,
+          additional_changes: additionalChangeItems,
           user_prompt_extra: userExtra,
           num_variations: numVariations,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error((data?.error?.message as string) ?? "Generate failed");
+
       setJob({
         job_id: data.job_id,
         status: data.status ?? "pending",
@@ -162,13 +243,13 @@ export default function DesignPage() {
         error: null,
       });
       setGenerated([]);
-      startPolling(data.job_id);
+      startPolling(data.job_id as string);
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }
-  }, [sessionId, rating, selectedIds, userExtra, numVariations, startPolling]);
+  }, [additionalChanges, numVariations, rating, selectedIds, sessionId, startPolling, userExtra]);
 
   useEffect(() => {
     return () => {
@@ -176,189 +257,148 @@ export default function DesignPage() {
     };
   }, []);
 
-  const cardClass =
-    "rounded-2xl border border-neutral-200 bg-white/80 p-6 shadow-sm text-left";
+  const cardClass = "rounded-2xl border border-neutral-200 bg-white/80 p-6 shadow-sm text-left";
   const h2Class = "font-serif text-xl font-medium text-neutral-900 mb-3";
   const btnClass =
     "rounded-full border border-neutral-900 bg-neutral-900 px-6 py-3 text-sm font-medium text-white hover:bg-black transition-colors disabled:opacity-50 disabled:pointer-events-none";
   const btnSecondaryClass =
     "rounded-full border border-neutral-900 px-6 py-3 text-sm font-medium text-neutral-900 hover:bg-neutral-900 hover:text-white transition-colors disabled:opacity-50";
+  const canGenerate =
+    !!rating &&
+    (selectedIds.size > 0 || additionalChanges.trim().length > 0 || userExtra.trim().length > 0) &&
+    !busy;
 
   return (
     <div className="flex min-h-screen bg-background">
       <main className="flex-1 overflow-auto">
         <div className="mx-auto max-w-2xl space-y-8 p-8 md:p-12">
           <div>
-            <Link
-              href="/"
-              className="text-sm uppercase tracking-wider text-neutral-500 hover:text-neutral-900"
-            >
-              ← Back
+            <Link href="/" className="text-sm uppercase tracking-wider text-neutral-500 hover:text-neutral-900">
+              Back
             </Link>
           </div>
           <h1 className="font-serif text-4xl tracking-tight text-foreground">Design</h1>
 
           {!sessionLoaded ? (
-            <p className="text-neutral-500">Loading…</p>
+            <p className="text-neutral-500">Loading...</p>
           ) : !sessionId || !originalAbsolute ? (
             <section className={cardClass}>
               <h2 className={h2Class}>No image yet</h2>
               <p className="text-neutral-600">
-                Upload a room photo on the home page and click <strong>Analyze Photo</strong> to
-                bring it here for rating and redesign.
+                Upload a room photo on the home page and click <strong>Analyze Photo</strong>.
               </p>
-              <Link
-                href="/"
-                className={cn(btnClass, "mt-4 inline-block")}
-              >
+              <Link href="/" className={cn(btnClass, "mt-4 inline-block")}>
                 Go to home page
               </Link>
             </section>
           ) : (
             <>
-              {/* 1) Room photo (from home page) */}
               <section className={cardClass}>
-                <h2 className={h2Class}>1) Room photo</h2>
+                <h2 className={h2Class}>1) Original room photo</h2>
                 <p className="text-sm text-neutral-600">
-                  Using the image you uploaded and analyzed on the home page. Continue to Rate and Generate below.
+                  This image stays fixed so you can compare each newly generated redesign.
                 </p>
                 <p className="mt-2 text-xs text-neutral-500">
                   <strong>Session:</strong> <code className="rounded bg-neutral-100 px-1">{sessionId}</code>
                 </p>
                 <div className="mt-4">
-                  <p className="mb-2 text-sm text-neutral-600">Original image</p>
                   <img
                     src={originalAbsolute}
                     alt="Original room"
                     className="w-full max-h-[420px] rounded-xl border border-neutral-200 object-contain"
                   />
                 </div>
-                <button
-                  type="button"
-                  onClick={resetAll}
-                  className={cn(btnSecondaryClass, "mt-4")}
-                >
-                  Start over (upload a different image on home)
+                <button type="button" onClick={resetAll} className={cn(btnSecondaryClass, "mt-4")}>
+                  Start over
                 </button>
               </section>
 
-          {/* 2) Rate */}
-          <section className={cardClass}>
-            <h2 className={h2Class}>2) Rate room</h2>
-            <button
-              type="button"
-              disabled={!sessionId || !!busy}
-              onClick={rate}
-              className={btnClass}
-            >
-              Rate (0–10)
-            </button>
+              <section className={cardClass}>
+                <h2 className={h2Class}>2) Rate room</h2>
+                <button type="button" disabled={!sessionId || !!busy} onClick={rate} className={btnClass}>
+                  Rate (0-10)
+                </button>
 
-            {rating && (
-              <div className="mt-6 space-y-4">
-                <div className="flex flex-wrap items-baseline gap-3">
-                  <span className="font-serif text-2xl text-neutral-900">
-                    Overall: <strong>{rating.overall_score}</strong>/10
-                  </span>
-                  <p className="text-neutral-600">{rating.summary}</p>
-                </div>
+                {rating && (
+                  <div className="mt-6 space-y-4">
+                    <div className="flex flex-wrap items-baseline gap-3">
+                      <span className="font-serif text-2xl text-neutral-900">
+                        Overall: <strong>{rating.overall_score}</strong>/10
+                      </span>
+                      <p className="text-neutral-600">{rating.summary}</p>
+                    </div>
 
-                {rating.breakdown && Object.keys(rating.breakdown).length > 0 && (
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {Object.entries(rating.breakdown).map(([k, v]) => (
-                      <div
-                        key={k}
-                        className="rounded-xl border border-neutral-200 bg-white p-3"
-                      >
-                        <p className="text-xs uppercase tracking-wider text-neutral-500">
-                          {k.replaceAll("_", " ")}
-                        </p>
-                        <p className="font-serif text-lg font-semibold text-neutral-900">
-                          {v}
-                        </p>
+                    {rating.breakdown && Object.keys(rating.breakdown).length > 0 && (
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                        {Object.entries(rating.breakdown).map(([k, v]) => (
+                          <div key={k} className="rounded-xl border border-neutral-200 bg-white p-3">
+                            <p className="text-xs uppercase tracking-wider text-neutral-500">{toTitleCase(k)}</p>
+                            <p className="font-serif text-lg font-semibold text-neutral-900">{v}</p>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
                 )}
+              </section>
+
+              <section className={cardClass}>
+                <h2 className={h2Class}>3) Generate redesigned images</h2>
+                <div className="flex flex-wrap items-center gap-4">
+                  <label className="text-sm text-neutral-600">Variations:</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={4}
+                    value={numVariations}
+                    onChange={(e) => setNumVariations(Math.min(4, Math.max(1, Number(e.target.value) || 1)))}
+                    className="w-20 rounded-lg border border-neutral-200 bg-background px-3 py-2 text-sm text-foreground"
+                  />
+                  <button type="button" disabled={!canGenerate} onClick={generate} className={btnClass}>
+                    Generate
+                  </button>
                 </div>
-            )}
-          </section>
+                <p className="mt-2 text-xs text-neutral-500">
+                  Use the sidebar on the right to add an optional style prompt.
+                </p>
 
-          {/* 3) Generate */}
-          <section className={cardClass}>
-            <h2 className={h2Class}>3) Generate redesigned images</h2>
-            <div className="flex flex-wrap items-center gap-4">
-              <label className="text-sm text-neutral-600">Variations:</label>
-              <input
-                type="number"
-                min={1}
-                max={4}
-                value={numVariations}
-                onChange={(e) =>
-                  setNumVariations(Math.min(4, Math.max(1, Number(e.target.value) || 1)))
-                }
-                className="w-20 rounded-lg border border-neutral-200 bg-background px-3 py-2 text-sm text-foreground"
-              />
-              <button
-                type="button"
-                disabled={
-                  !rating ||
-                  selectedIds.size === 0 ||
-                  !!busy
-                }
-                onClick={generate}
-                className={btnClass}
-              >
-                Generate
-              </button>
-            </div>
-            <p className="mt-2 text-xs text-neutral-500">
-              Use the sidebar on the right to add an optional style prompt.
-            </p>
-
-            {job && (
-              <div className="mt-4 text-sm text-neutral-600">
-                <strong>Job:</strong> <code className="rounded bg-neutral-100 px-1">{job.job_id}</code> •{" "}
-                <strong>Status:</strong> {job.status}
-                {job.error && (
-                  <p className="mt-2 text-red-600">
-                    <strong>Error:</strong> {job.error}
-                  </p>
+                {job && (
+                  <div className="mt-4 text-sm text-neutral-600">
+                    <strong>Job:</strong> <code className="rounded bg-neutral-100 px-1">{job.job_id}</code> •{" "}
+                    <strong>Status:</strong> {job.status}
+                    {job.error && (
+                      <p className="mt-2 text-red-600">
+                        <strong>Error:</strong> {job.error}
+                      </p>
+                    )}
+                  </div>
                 )}
-              </div>
-            )}
 
-            {generatedAbsolute.length > 0 && (
-              <div className="mt-6">
-                <h3 className="mb-3 font-serif text-lg font-medium text-neutral-900">
-                  Generated images
-                </h3>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {generatedAbsolute.map((u, idx) => (
-                    <a
-                      key={u}
-                      href={u}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block rounded-xl border border-neutral-200 bg-white p-3 transition-shadow hover:shadow-md"
-                    >
-                      <p className="mb-2 text-xs uppercase tracking-wider text-neutral-500">
-                        Variant {idx + 1}
-                      </p>
-                      <img
-                        src={u}
-                        alt={`Generated ${idx + 1}`}
-                        className="h-52 w-full rounded-lg border border-neutral-100 object-cover"
-                      />
-                      <p className="mt-2 text-xs text-neutral-500">
-                        Click to open full size
-                      </p>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
-          </section>
+                {generatedAbsolute.length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="mb-3 font-serif text-lg font-medium text-neutral-900">Generated images</h3>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      {generatedAbsolute.map((u, idx) => (
+                        <a
+                          key={u}
+                          href={u}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block rounded-xl border border-neutral-200 bg-white p-3 transition-shadow hover:shadow-md"
+                        >
+                          <p className="mb-2 text-xs uppercase tracking-wider text-neutral-500">Variant {idx + 1}</p>
+                          <img
+                            src={u}
+                            alt={`Generated ${idx + 1}`}
+                            className="h-52 w-full rounded-lg border border-neutral-100 object-cover"
+                          />
+                          <p className="mt-2 text-xs text-neutral-500">Click to open full size</p>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </section>
             </>
           )}
         </div>
@@ -382,6 +422,7 @@ export default function DesignPage() {
             ...prev,
             { id: Date.now().toString(), role: "user", content: text }
           ]);
+          setAdditionalChanges((prev) => (prev ? `${prev}\n${text}` : text));
           setUserExtra("");
         }}
       />

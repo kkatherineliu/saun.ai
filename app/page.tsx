@@ -178,6 +178,7 @@ export default function Home() {
           JSON.stringify({
             session_id: (data as { session_id: string }).session_id,
             original_image_url: (data as { original_image_url?: string }).original_image_url ?? null,
+            rating_result: (data as { rating_result?: unknown }).rating_result ?? null,
           })
         );
         router.push("/design");
