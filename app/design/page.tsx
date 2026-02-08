@@ -4,12 +4,26 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChatSidebar, type Message, type Suggestion } from "@/components/ChatSidebar";
+import Agent, { type ElevenLabsAgent } from "@/components/Agent";
 import { ShopSidebar, type ShopItem } from "@/components/ShopSidebar";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, ArrowRight, MoveRight, Sparkles, Star, RotateCcw } from "lucide-react";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001";
 const DESIGN_SESSION_KEY = "saun-design-session";
+
+const VOICE_AGENTS: ElevenLabsAgent[] = [
+  {
+    id: "agent_2601kgxsvkcde51v5rsm0s81ywyk",
+    name: "Master Lin",
+    description: "Feng Shui Master",
+  },
+  {
+    id: "agent_5801kgxsfvfkf899188qr66th132",
+    name: "Ava",
+    description: "Interior Design Assistant",
+  },
+];
 
 type RatingResult = {
   overall_score: number;
@@ -209,7 +223,7 @@ export default function DesignPage() {
         { id: Date.now().toString(), role: "user", content: trimmed },
       ]);
       setUserExtra("");
-      setAdditionalChanges(additionalChanges + "\n" + trimmed);
+      setAdditionalChanges((prev) => prev + "\n" + trimmed);
     },
     []
   );
@@ -309,7 +323,10 @@ export default function DesignPage() {
 
 
   return (
-    <div className="flex h-screen bg-[#FDFBF7] overflow-hidden">
+    <div className="flex h-screen bg-white overflow-hidden">
+      <div className="fixed bottom-6 left-6 z-40">
+        <Agent agents={VOICE_AGENTS} className="w-[360px] bg-white/95 backdrop-blur" />
+      </div>
       {/* Shop Sidebar (Left) */}
       <ShopSidebar
         className="h-full z-40 bg-white/95 border-r border-neutral-100 shadow-none"

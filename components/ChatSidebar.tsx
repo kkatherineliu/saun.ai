@@ -69,7 +69,7 @@ export function ChatSidebar({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(400); // Default width before hydration
+  const [width, setWidth] = useState(600); // Default max width
   const [isResizing, setIsResizing] = useState(false);
   const [isShopHovered, setIsShopHovered] = useState(false);
 
@@ -126,6 +126,14 @@ export function ChatSidebar({
     }
   }, [value]);
 
+  useEffect(() => {
+    if (!messagesRef.current) return;
+    messagesRef.current.scrollTo({
+      top: messagesRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [messages.length]);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -181,8 +189,11 @@ export function ChatSidebar({
       </div>
 
       {/* Messages Area - Scrollable */}
-      <div ref={messagesRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-6 scrollbar-hide [&::-webkit-scrollbar]:hidden">
-        {messages.map((msg, i) => {
+      <div
+        ref={messagesRef}
+        className="flex-1 overflow-y-auto px-6 py-4 space-y-6 scrollbar-hide [&::-webkit-scrollbar]:hidden"
+      >
+        {messages.map((msg) => {
           const hasSuggestions = msg.suggestions && msg.suggestions.length > 0;
           
           return (
