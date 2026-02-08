@@ -4,12 +4,26 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChatSidebar, type Message, type Suggestion } from "@/components/ChatSidebar";
+import Agent, { type ElevenLabsAgent } from "@/components/Agent";
 import { ShopSidebar, type ShopItem } from "@/components/ShopSidebar";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, ArrowRight, MoveRight, Sparkles, Star, RotateCcw } from "lucide-react";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001";
 const DESIGN_SESSION_KEY = "saun-design-session";
+
+const VOICE_AGENTS: ElevenLabsAgent[] = [
+  {
+    id: "agent_2601kgxsvkcde51v5rsm0s81ywyk",
+    name: "Master Lin",
+    description: "Feng Shui Master",
+  },
+  {
+    id: "agent_5801kgxsfvfkf899188qr66th132",
+    name: "Ava",
+    description: "Interior Design Assistant",
+  },
+];
 
 type RatingResult = {
   overall_score: number;
@@ -292,6 +306,11 @@ export default function DesignPage() {
 
 
   return (
+    <div className="flex min-h-screen bg-white">
+      <main className="flex-1 overflow-auto relative">
+        <div className="fixed bottom-6 left-6 z-40">
+          <Agent agents={VOICE_AGENTS} className="w-[360px] bg-white/95 backdrop-blur" />
+        </div>
     <div className="flex h-screen bg-white overflow-hidden">
       {/* Shop Sidebar (Left) */}
       <ShopSidebar
