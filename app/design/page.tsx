@@ -306,11 +306,6 @@ export default function DesignPage() {
 
 
   return (
-    <div className="flex min-h-screen bg-white">
-      <main className="flex-1 overflow-auto relative">
-        <div className="fixed bottom-6 left-6 z-40">
-          <Agent agents={VOICE_AGENTS} className="w-[360px] bg-white/95 backdrop-blur" />
-        </div>
     <div className="flex h-screen bg-white overflow-hidden">
       {/* Shop Sidebar (Left) */}
       <ShopSidebar
@@ -331,30 +326,8 @@ export default function DesignPage() {
 
         {/* Start Over Button - Moved to Top Right */}
         {sessionId && (
-          <div className="absolute top-8 right-8 z-50">
-            <button
-              type="button"
-              onClick={() => {
-                if (isResetExpanded) {
-                  resetAll();
-                } else {
-                  setIsResetExpanded(true);
-                }
-              }}
-              onMouseLeave={() => setIsResetExpanded(false)}
-              className={cn(
-                "flex items-center justify-center rounded-full bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] hover:shadow-xl transition-all duration-300 ease-in-out border border-neutral-100",
-                isResetExpanded ? "pl-3 pr-5 py-3 gap-2" : "w-12 h-12"
-              )}
-            >
-              <RotateCcw className={cn("w-5 h-5 text-neutral-900", isResetExpanded ? "rotate-[-180deg] transition-transform duration-500" : "")} />
-              <span className={cn(
-                "text-sm font-medium text-neutral-900 whitespace-nowrap overflow-hidden transition-all duration-300",
-                isResetExpanded ? "max-w-[100px] opacity-100" : "max-w-0 opacity-0"
-              )}>
-                Start Over
-              </span>
-            </button>
+          <div className="absolute top-8 right-8 z-50 flex items-center gap-4">
+            <Agent agents={VOICE_AGENTS} />
           </div>
         )}
 
@@ -554,8 +527,6 @@ export default function DesignPage() {
           }
         }}
       />
-    </div>
-      </main>
     </div>
   );
 }

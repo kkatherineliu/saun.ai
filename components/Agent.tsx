@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { useConversation } from "@elevenlabs/react";
-import { Loader2, Phone, PhoneOff } from "lucide-react";
-
+import { Loader2, Phone, PhoneOff, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Orb, type AgentState as OrbAgentState } from "@/components/ui/orb";
 
 type AgentState =
   | "disconnected"
@@ -17,22 +17,21 @@ export type ElevenLabsAgent = {
   id: string;
   name: string;
   description?: string;
+  colors?: string[];
 };
 
 const ENV_AGENTS: ElevenLabsAgent[] = [
   {
     id: process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID_1 ?? "",
-    name: process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_NAME_1 ?? "Agent 1",
-    description:
-      process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_DESCRIPTION_1 ??
-      "Tap to start voice chat",
+    name: process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_NAME_1 ?? "Master Lin",
+    description: "Feng Shui Master",
+    colors: ["#D4AF37", "#C5A028"],
   },
   {
     id: process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID_2 ?? "",
-    name: process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_NAME_2 ?? "Agent 2",
-    description:
-      process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_DESCRIPTION_2 ??
-      "Tap to start voice chat",
+    name: process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_NAME_2 ?? "Ava",
+    description: "Interior Design Assistant",
+    colors: ["#4ECDC4", "#556270"],
   },
 ].filter((a) => a.id);
 
@@ -58,6 +57,7 @@ export default function Agent({
   const [agentState, setAgentState] = useState<AgentState>("disconnected");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedAgentIndex, setSelectedAgentIndex] = useState(0);
+  const [isOpen, setIsOpen] = useState(false);
 
   const selectedAgent = agents[selectedAgentIndex];
   const selectedAgentId = selectedAgent?.id;
@@ -72,18 +72,15 @@ export default function Agent({
     },
   });
 
-  const normalizedInputVolume = useMemo(() => {
+  const getInputVolume = useCallback(() => {
     const raw = conversation.getInputVolume?.() ?? 0;
     return Math.min(1, Math.pow(raw, 0.5) * 2.5);
   }, [conversation]);
 
-  const normalizedOutputVolume = useMemo(() => {
+  const getOutputVolume = useCallback(() => {
     const raw = conversation.getOutputVolume?.() ?? 0;
     return Math.min(1, Math.pow(raw, 0.5) * 2.5);
   }, [conversation]);
-
-  const orbIntensity = Math.max(normalizedInputVolume, normalizedOutputVolume);
-  const orbScale = 1 + orbIntensity * 0.35;
 
   const startConversation = useCallback(async () => {
     if (!selectedAgentId) {
@@ -138,94 +135,114 @@ export default function Agent({
   const isTransitioning =
     agentState === "connecting" || agentState === "disconnecting";
 
+  // Determine Orb state based on volumes/connection
+  // This is a simple approximation
+  const orbState: OrbAgentState = isConnected 
+    ? (getOutputVolume() > 0.1 ? "talking" : getInputVolume() > 0.1 ? "listening" : null)
+    : null;
+
   return (
-    <section
-      className={cn(
-        "w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm",
-        className
-      )}
-    >
-      <div className="flex flex-col items-center gap-5">
-        <div className="flex w-full gap-2">
-          {agents.length ? (
-            agents.map((agent, index) => {
-              const isActive = index === selectedAgentIndex;
-              return (
+    <div className={cn("relative z-50", className)}>
+      {/* Trigger Button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={cn(
+          "flex items-center justify-center rounded-full bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] hover:shadow-xl transition-all duration-300 ease-in-out border border-neutral-100",
+          isOpen ? "w-12 h-12 bg-neutral-100" : "w-12 h-12"
+        )}
+      >
+        {isOpen ? (
+          <X className="w-5 h-5 text-neutral-900" />
+        ) : isConnected ? (
+          <span className="relative flex h-3 w-3">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+          </span>
+        ) : (
+          <Phone className="w-5 h-5 text-neutral-900" /> 
+        )}
+      </button>
+
+      {/* Expanded Card */}
+      {isOpen && (
+        <div className="absolute top-16 right-0 w-[320px] bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-200">
+          
+          {/* Agent Selection Header */}
+          <div className="p-4 border-b border-neutral-100 bg-neutral-50/50">
+            <div className="flex gap-2 p-1 bg-neutral-200/50 rounded-xl">
+              {agents.map((agent, index) => (
                 <button
                   key={agent.id}
-                  type="button"
                   onClick={() => handleSelectAgent(index)}
                   className={cn(
-                    "flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition-colors",
-                    isActive
-                      ? "border-neutral-900 bg-neutral-900 text-white"
-                      : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
+                    "flex-1 py-2 text-xs font-medium rounded-lg transition-all duration-200",
+                    selectedAgentIndex === index
+                      ? "bg-white text-neutral-900 shadow-sm"
+                      : "text-neutral-500 hover:text-neutral-700"
                   )}
                 >
                   {agent.name}
                 </button>
-              );
-            })
-          ) : (
-            <p className="w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              No ElevenLabs agents found. Configure env vars first.
-            </p>
-          )}
-        </div>
+              ))}
+            </div>
+          </div>
 
-        <div className="relative h-32 w-32">
-          <div
-            className={cn(
-              "absolute inset-0 rounded-full bg-cyan-200/40 blur-xl transition-transform duration-100",
-              isConnected && "animate-pulse"
-            )}
-            style={{ transform: `scale(${orbScale})` }}
-          />
-          <div
-            className={cn(
-              "relative h-full w-full rounded-full border border-cyan-200 bg-gradient-to-br from-cyan-100 via-sky-200 to-blue-300 shadow-inner transition-transform duration-100",
-              isConnected && "shadow-cyan-300/70"
-            )}
-            style={{ transform: `scale(${orbScale})` }}
-          />
-        </div>
+          <div className="p-6 flex flex-col items-center gap-6">
+            {/* Orb Container */}
+            <div className="relative w-48 h-48">
+              <Orb 
+                colors={selectedAgent.colors as [string, string]}
+                getInputVolume={getInputVolume}
+                getOutputVolume={getOutputVolume}
+                volumeMode="manual"
+              />
+            </div>
 
-        <div className="text-center">
-          <h2 className="text-lg font-semibold text-neutral-900">
-            {selectedAgent?.name ?? "Voice Agent"}
-          </h2>
-          <p className="mt-1 min-h-5 text-sm text-neutral-500">
-            {errorMessage ??
-              (isConnected
-                ? "Connected"
-                : isTransitioning
-                  ? agentState
-                  : selectedAgent?.description ?? "Tap to start voice chat")}
-          </p>
-        </div>
+            {/* Status / Info */}
+            <div className="text-center space-y-1">
+              <h3 className="font-serif text-xl text-neutral-900">
+                {selectedAgent.name}
+              </h3>
+              <p className="text-xs text-neutral-500 font-medium tracking-wide uppercase">
+                {isConnected 
+                  ? "Connected" 
+                  : isTransitioning 
+                    ? "Connecting..." 
+                    : selectedAgent.description}
+              </p>
+              {errorMessage && (
+                <p className="text-xs text-red-500 mt-2">{errorMessage}</p>
+              )}
+            </div>
 
-        <button
-          type="button"
-          onClick={handleCall}
-          disabled={isTransitioning || !selectedAgent?.id}
-          className={cn(
-            "inline-flex h-12 w-12 items-center justify-center rounded-full border transition-colors",
-            isConnected
-              ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
-              : "border-neutral-900 bg-neutral-900 text-white hover:bg-black",
-            "disabled:cursor-not-allowed disabled:opacity-50"
-          )}
-          aria-label={isConnected ? "End call" : "Start call"}
-        >
-          {isTransitioning ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : isConnected ? (
-            <PhoneOff className="h-5 w-5" />
-          ) : (
-            <Phone className="h-5 w-5" />
-          )}
-        </button>
-      </div>
-    </section>
+            {/* Action Button */}
+            <button
+              onClick={handleCall}
+              disabled={isTransitioning}
+              className={cn(
+                "w-full py-4 rounded-xl flex items-center justify-center gap-2 font-medium transition-all duration-300",
+                isConnected
+                  ? "bg-red-50 text-red-600 hover:bg-red-100"
+                  : "bg-neutral-900 text-white hover:bg-black hover:scale-[1.02]"
+              )}
+            >
+              {isTransitioning ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : isConnected ? (
+                <>
+                  <PhoneOff className="w-4 h-4" />
+                  <span>End Call</span>
+                </>
+              ) : (
+                <>
+                  <Phone className="w-4 h-4" />
+                  <span>Start Call</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
