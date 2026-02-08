@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChatSidebar, type Message, type Suggestion } from "@/components/ChatSidebar";
 import { cn } from "@/lib/utils";
+import { ArrowLeft, ArrowRight, MoveRight, Sparkles, Star } from "lucide-react";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001";
 const DESIGN_SESSION_KEY = "saun-design-session";
@@ -38,11 +39,13 @@ function toTitleCase(value: string) {
     .replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
+
 export default function DesignPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [originalUrl, setOriginalUrl] = useState<string | null>(null);
   const [rating, setRating] = useState<RatingResult | null>(null);
+  const [isCurating, setIsCurating] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [userExtra, setUserExtra] = useState("");
   const [additionalChanges, setAdditionalChanges] = useState("");
@@ -52,6 +55,7 @@ export default function DesignPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hasAutoRatedRef = useRef(false);
 
   const applyRating = useCallback((result: RatingResult | null) => {
     setRating(result);
@@ -123,7 +127,7 @@ export default function DesignPage() {
         {
           id: Date.now().toString(),
           role: "assistant",
-          content: `I've analyzed your room! It has a score of ${rating.overall_score}/10. ${rating.summary}\n\nHere are my suggestions for improvement:`,
+          content: `I've analyzed your room! ${rating.summary}\n\nHere are my suggestions for improvement:`,
           suggestions: rating.suggestions ?? [],
         },
       ];
@@ -135,10 +139,15 @@ export default function DesignPage() {
     return originalUrl.startsWith("http") ? originalUrl : `${apiBase}${originalUrl}`;
   }, [originalUrl]);
 
+  const displayImageUrl = originalAbsolute ?? undefined;
+
   const generatedAbsolute = useMemo(
     () => generated.map((u) => (u.startsWith("http") ? u : `${apiBase}${u}`)),
     [generated]
   );
+  const afterImageUrl = generatedAbsolute[0] ?? null;
+  const showAfter =
+    isCurating || job?.status === "pending" || job?.status === "running" || !!afterImageUrl;
 
   const resetAll = useCallback(() => {
     if (typeof window !== "undefined") sessionStorage.removeItem(DESIGN_SESSION_KEY);
@@ -146,13 +155,41 @@ export default function DesignPage() {
     setSessionId(null);
     setOriginalUrl(null);
     setRating(null);
+    setIsCurating(false);
     setSelectedIds(new Set());
+    setMessages([]);
     setUserExtra("");
     setAdditionalChanges("");
     setNumVariations(2);
     setJob(null);
     setGenerated([]);
+    hasAutoRatedRef.current = false;
   }, []);
+
+  const toggleSuggestion = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSubmitMessage = useCallback(
+    (value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) return;
+      setMessages((prev) => [
+        ...prev,
+        { id: Date.now().toString(), role: "user", content: trimmed },
+      ]);
+      setUserExtra("");
+    },
+    []
+  );
 
   const rate = useCallback(async () => {
     if (!sessionId) return alert("Upload first.");
@@ -183,9 +220,11 @@ export default function DesignPage() {
         setJob(data);
         if (data.status === "done") {
           setGenerated(data.generated_images ?? []);
+          setIsCurating(false);
           if (pollTimer.current) clearInterval(pollTimer.current);
           pollTimer.current = null;
         } else if (data.status === "error") {
+          setIsCurating(false);
           if (pollTimer.current) clearInterval(pollTimer.current);
           pollTimer.current = null;
         }
@@ -221,6 +260,7 @@ export default function DesignPage() {
     );
 
     setBusy("Starting generation...");
+    setIsCurating(true);
     try {
       const res = await fetch(`${apiBase}/api/sessions/${sessionId}/generate`, {
         method: "POST",
@@ -243,8 +283,12 @@ export default function DesignPage() {
         error: null,
       });
       setGenerated([]);
+      if (data.status === "done") {
+        setIsCurating(false);
+      }
       startPolling(data.job_id as string);
     } catch (e: unknown) {
+      setIsCurating(false);
       alert(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
@@ -257,174 +301,191 @@ export default function DesignPage() {
     };
   }, []);
 
-  const cardClass = "rounded-2xl border border-neutral-200 bg-white/80 p-6 shadow-sm text-left";
-  const h2Class = "font-serif text-xl font-medium text-neutral-900 mb-3";
-  const btnClass =
-    "rounded-full border border-neutral-900 bg-neutral-900 px-6 py-3 text-sm font-medium text-white hover:bg-black transition-colors disabled:opacity-50 disabled:pointer-events-none";
-  const btnSecondaryClass =
-    "rounded-full border border-neutral-900 px-6 py-3 text-sm font-medium text-neutral-900 hover:bg-neutral-900 hover:text-white transition-colors disabled:opacity-50";
-  const canGenerate =
-    !!rating &&
-    (selectedIds.size > 0 || additionalChanges.trim().length > 0 || userExtra.trim().length > 0) &&
-    !busy;
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <main className="flex-1 overflow-auto">
-        <div className="mx-auto max-w-2xl space-y-8 p-8 md:p-12">
-          <div>
-            <Link href="/" className="text-sm uppercase tracking-wider text-neutral-500 hover:text-neutral-900">
-              Back
+    <div className="flex min-h-screen bg-[#FDFBF7]">
+      <main className="flex-1 overflow-auto relative">
+        {/* Decorative Background Curve */}
+        <div className="fixed bottom-0 left-0 w-[40vw] h-[40vh] pointer-events-none z-0 opacity-10">
+           <svg className="w-full h-full text-black" viewBox="0 0 100 100" preserveAspectRatio="none">
+             <path 
+               d="M0,100 C30,40 60,60 100,80" 
+               fill="none" 
+               stroke="currentColor" 
+               strokeWidth="1.0" 
+             />
+           </svg>
+        </div>
+
+        <div className="relative z-10 mx-auto max-w-360 space-y-8 p-8 md:p-12">
+          <div className="flex flex-row items-center gap-4">
+            <Link href="/" className="flex items-center text-sm uppercase tracking-wider text-neutral-500 hover:text-neutral-900">
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              <span>Back</span>
             </Link>
           </div>
-          <h1 className="font-serif text-4xl tracking-tight text-foreground">Design</h1>
 
           {!sessionLoaded ? (
             <p className="text-neutral-500">Loading...</p>
-          ) : !sessionId || !originalAbsolute ? (
-            <section className={cardClass}>
-              <h2 className={h2Class}>No image yet</h2>
-              <p className="text-neutral-600">
-                Upload a room photo on the home page and click <strong>Analyze Photo</strong>.
-              </p>
-              <Link href="/" className={cn(btnClass, "mt-4 inline-block")}>
-                Go to home page
-              </Link>
-            </section>
-          ) : (
-            <>
-              <section className={cardClass}>
-                <h2 className={h2Class}>1) Original room photo</h2>
-                <p className="text-sm text-neutral-600">
-                  This image stays fixed so you can compare each newly generated redesign.
-                </p>
-                <p className="mt-2 text-xs text-neutral-500">
-                  <strong>Session:</strong> <code className="rounded bg-neutral-100 px-1">{sessionId}</code>
-                </p>
-                <div className="mt-4">
-                  <img
-                    src={originalAbsolute}
-                    alt="Original room"
-                    className="w-full max-h-[420px] rounded-xl border border-neutral-200 object-contain"
-                  />
-                </div>
-                <button type="button" onClick={resetAll} className={cn(btnSecondaryClass, "mt-4")}>
-                  Start over
-                </button>
-              </section>
-
-              <section className={cardClass}>
-                <h2 className={h2Class}>2) Rate room</h2>
-                <button type="button" disabled={!sessionId || !!busy} onClick={rate} className={btnClass}>
-                  Rate (0-10)
-                </button>
-
-                {rating && (
-                  <div className="mt-6 space-y-4">
-                    <div className="flex flex-wrap items-baseline gap-3">
-                      <span className="font-serif text-2xl text-neutral-900">
-                        Overall: <strong>{rating.overall_score}</strong>/10
-                      </span>
-                      <p className="text-neutral-600">{rating.summary}</p>
-                    </div>
-
-                    {rating.breakdown && Object.keys(rating.breakdown).length > 0 && (
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                        {Object.entries(rating.breakdown).map(([k, v]) => (
-                          <div key={k} className="rounded-xl border border-neutral-200 bg-white p-3">
-                            <p className="text-xs uppercase tracking-wider text-neutral-500">{toTitleCase(k)}</p>
-                            <p className="font-serif text-lg font-semibold text-neutral-900">{v}</p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </section>
-
-              <section className={cardClass}>
-                <h2 className={h2Class}>3) Generate redesigned images</h2>
-                <div className="flex flex-wrap items-center gap-4">
-                  <label className="text-sm text-neutral-600">Variations:</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={4}
-                    value={numVariations}
-                    onChange={(e) => setNumVariations(Math.min(4, Math.max(1, Number(e.target.value) || 1)))}
-                    className="w-20 rounded-lg border border-neutral-200 bg-background px-3 py-2 text-sm text-foreground"
-                  />
-                  <button type="button" disabled={!canGenerate} onClick={generate} className={btnClass}>
-                    Generate
+          ) : sessionId && originalAbsolute ? (
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
+              {/* Left Column: Image */}
+              <div className="flex flex-col gap-6">
+                <div className="flex items-center justify-between shrink-0">
+                  <p className="text-xs uppercase tracking-widest text-neutral-500 font-medium">
+                    Original Photo
+                  </p>
+                  <button
+                    type="button"
+                    onClick={resetAll}
+                    className="text-xs font-medium text-neutral-400 hover:text-neutral-900 transition-colors"
+                  >
+                    Start over
                   </button>
                 </div>
-                <p className="mt-2 text-xs text-neutral-500">
-                  Use the sidebar on the right to add an optional style prompt.
-                </p>
-
-                {job && (
-                  <div className="mt-4 text-sm text-neutral-600">
-                    <strong>Job:</strong> <code className="rounded bg-neutral-100 px-1">{job.job_id}</code> •{" "}
-                    <strong>Status:</strong> {job.status}
-                    {job.error && (
-                      <p className="mt-2 text-red-600">
-                        <strong>Error:</strong> {job.error}
-                      </p>
+                
+                <div className="relative h-full min-h-[60vh] w-full overflow-hidden rounded-xl bg-neutral-100 shadow-sm">
+                  <img
+                    src={displayImageUrl}
+                    alt="Original room"
+                    className={cn(
+                      "h-full w-full",
+                      afterImageUrl ? "object-contain bg-neutral-50" : "object-cover"
                     )}
-                  </div>
-                )}
+                  />
+                  {!afterImageUrl && (
+                    <div className="absolute inset-0 pointer-events-none bg-linear-to-t from-black/5 to-transparent" />
+                  )}
+                </div>
+              </div>
 
-                {generatedAbsolute.length > 0 && (
-                  <div className="mt-6">
-                    <h3 className="mb-3 font-serif text-lg font-medium text-neutral-900">Generated images</h3>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      {generatedAbsolute.map((u, idx) => (
-                        <a
-                          key={u}
-                          href={u}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="block rounded-xl border border-neutral-200 bg-white p-3 transition-shadow hover:shadow-md"
-                        >
-                          <p className="mb-2 text-xs uppercase tracking-wider text-neutral-500">Variant {idx + 1}</p>
-                          <img
-                            src={u}
-                            alt={`Generated ${idx + 1}`}
-                            className="h-52 w-full rounded-lg border border-neutral-100 object-cover"
-                          />
-                          <p className="mt-2 text-xs text-neutral-500">Click to open full size</p>
-                        </a>
-                      ))}
+              {/* Right Column: Rating & Breakdown */}
+              <div className="flex flex-col justify-center space-y-12 py-2">
+                {/* Status / Overall Rating Area */}
+                <div className="w-full">
+                  {busy ? (
+                    <div className="flex flex-col gap-4 animate-in fade-in duration-300 py-2">
+                      <div className="flex items-center gap-3 text-neutral-900">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-900 border-t-transparent" />
+                        <p className="text-sm font-medium tracking-wide">{busy}</p>
+                      </div>
+                      <p className="text-xs text-neutral-500 max-w-xs leading-relaxed">
+                        Our AI is analyzing lighting, composition, and style to provide tailored recommendations.
+                      </p>
                     </div>
-                  </div>
-                )}
-              </section>
-            </>
+                  ) : rating ? (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                      {/* Overall Score / After Image */}
+                      {showAfter ? (
+                        <div className="flex flex-col gap-6">
+                          <div className="flex items-center justify-between shrink-0">
+                            <p className="text-xs uppercase tracking-widest text-neutral-500 font-medium">
+                              After Curation
+                            </p>
+                            <span className="text-xs uppercase tracking-widest text-neutral-400">
+                              {isCurating ? "Generating..." : "Curated"}
+                            </span>
+                          </div>
+                          
+                          <div className="relative h-full min-h-[60vh] w-full overflow-hidden rounded-xl bg-neutral-100 shadow-sm">
+                            {afterImageUrl ? (
+                              <img
+                                src={afterImageUrl}
+                                alt="Curated room"
+                                className="h-full w-full object-contain bg-neutral-50"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-sm text-neutral-500">
+                                Generating...
+                              </div>
+                            )}
+                            {!afterImageUrl && (
+                              <div className="absolute inset-0 pointer-events-none bg-linear-to-t from-black/5 to-transparent" />
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="flex items-end justify-between border-b border-neutral-900 pb-4">
+                            <h2 className="font-serif text-2xl text-foreground">Overall</h2>
+                            <div className="flex items-baseline gap-1">
+                              <span className="font-serif text-5xl text-foreground tracking-tight">
+                                {rating.overall_score}
+                              </span>
+                              <span className="text-xl text-neutral-400 font-light">/10</span>
+                            </div>
+                          </div>
+                          {rating.breakdown && Object.keys(rating.breakdown).length > 0 && (
+                            <div className="space-y-4 pt-4">
+                              <div className="grid grid-cols-1 gap-y-4">
+                                {Object.entries(rating.breakdown).map(([k, v]) => (
+                                  <div
+                                    key={k}
+                                    className="group flex items-center justify-between py-3 rounded-lg px-4 hover:bg-neutral-100 transition-colors"
+                                  >
+                                    <p className="text-xs font-medium uppercase tracking-widest text-neutral-500 group-hover:text-neutral-900 transition-colors">
+                                      {k.replaceAll("_", " ")}
+                                    </p>
+                                    <div className="flex items-center gap-1">
+                                      {Array.from({ length: 5 }).map((_, i) => (
+                                        <Star
+                                          key={i}
+                                          className={cn(
+                                            "w-4 h-4 transition-all duration-300",
+                                            i < Math.round(v / 2)
+                                              ? "fill-neutral-900 text-neutral-900"
+                                              : "fill-transparent text-neutral-300 group-hover:text-neutral-400"
+                                          )}
+                                          strokeWidth={1.5}
+                                        />
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </section>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
+              <div className="p-4 rounded-full bg-neutral-100">
+                <Sparkles className="w-8 h-8 text-neutral-400" />
+              </div>
+              <div className="space-y-2">
+                <h2 className="font-serif text-2xl text-foreground">No Active Session</h2>
+                <p className="text-neutral-500 max-w-xs mx-auto">
+                  Start by uploading a photo of your room on the homepage.
+                </p>
+              </div>
+              <Link
+                href="/"
+                className="inline-flex items-center gap-2 px-8 py-3 bg-neutral-900 text-white rounded-full font-medium hover:bg-black hover:scale-105 transition-all duration-300"
+              >
+                <span>Go to Homepage</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
           )}
         </div>
       </main>
 
       <ChatSidebar
+        className="bg-white/95 border-l border-neutral-100 shadow-[0_0_40px_rgba(0,0,0,0.03)]"
         value={userExtra}
         onChange={setUserExtra}
+        placeholder="Extra modifications..."
         messages={messages}
         selectedSuggestionIds={selectedIds}
-        onToggleSuggestion={(id) => {
-          setSelectedIds((prev) => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-          });
-        }}
-        onSubmit={(text) => {
-          setMessages((prev) => [
-            ...prev,
-            { id: Date.now().toString(), role: "user", content: text }
-          ]);
-          setAdditionalChanges((prev) => (prev ? `${prev}\n${text}` : text));
-          setUserExtra("");
-        }}
+        onToggleSuggestion={toggleSuggestion}
+        onSubmit={handleSubmitMessage}
+        onCurate={generate}
+        isCurating={isCurating}
       />
     </div>
   );
