@@ -1,10 +1,11 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChatSidebar, type Message, type Suggestion } from "@/components/ChatSidebar";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, ArrowRight, MoveRight, Sparkles, Star } from "lucide-react";
+import { ArrowLeft, ArrowRight, MoveRight, Sparkles, Star, RotateCcw } from "lucide-react";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001";
 const DESIGN_SESSION_KEY = "saun-design-session";
@@ -54,6 +55,12 @@ export default function DesignPage() {
   const [generated, setGenerated] = useState<string[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessionLoaded, setSessionLoaded] = useState(false);
+  
+  // New State for View Mode and Reset Button
+  const [viewMode, setViewMode] = useState<'original' | 'after'>('original');
+  const [isResetExpanded, setIsResetExpanded] = useState(false);
+  const router = useRouter();
+
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasAutoRatedRef = useRef(false);
 
@@ -149,21 +156,19 @@ export default function DesignPage() {
   const showAfter =
     isCurating || job?.status === "pending" || job?.status === "running" || !!afterImageUrl;
 
+  // Auto-switch view mode when after image is available/generating
+  useEffect(() => {
+    if (showAfter) {
+      setViewMode('after');
+    } else {
+      setViewMode('original');
+    }
+  }, [showAfter]);
+
   const resetAll = useCallback(() => {
     if (typeof window !== "undefined") sessionStorage.removeItem(DESIGN_SESSION_KEY);
-    setBusy(null);
-    setSessionId(null);
-    setOriginalUrl(null);
-    setRating(null);
-    setIsCurating(false);
-    setSelectedIds(new Set());
-    setMessages([]);
-    setUserExtra("");
-    setAdditionalChanges("");
-    setNumVariations(2);
-    setJob(null);
-    setGenerated([]);
-    hasAutoRatedRef.current = false;
+    // Force a hard navigation to ensure clean state
+    window.location.href = "/";
   }, []);
 
   const toggleSuggestion = useCallback((id: string) => {
@@ -303,19 +308,38 @@ export default function DesignPage() {
 
 
   return (
-    <div className="flex min-h-screen bg-[#FDFBF7]">
+    <div className="flex min-h-screen bg-white">
       <main className="flex-1 overflow-auto relative">
-        {/* Decorative Background Curve */}
-        <div className="fixed bottom-0 left-0 w-[40vw] h-[40vh] pointer-events-none z-0 opacity-10">
-           <svg className="w-full h-full text-black" viewBox="0 0 100 100" preserveAspectRatio="none">
-             <path 
-               d="M0,100 C30,40 60,60 100,80" 
-               fill="none" 
-               stroke="currentColor" 
-               strokeWidth="1.0" 
-             />
-           </svg>
-        </div>
+
+
+        {/* Start Over Button - Moved to Top Right */}
+        {sessionId && (
+          <div className="absolute top-8 right-8 z-50">
+            <button
+              type="button"
+              onClick={() => {
+                if (isResetExpanded) {
+                  resetAll();
+                } else {
+                  setIsResetExpanded(true);
+                }
+              }}
+              onMouseLeave={() => setIsResetExpanded(false)}
+              className={cn(
+                "flex items-center justify-center rounded-full bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] hover:shadow-xl transition-all duration-300 ease-in-out border border-neutral-100",
+                isResetExpanded ? "pl-3 pr-5 py-3 gap-2" : "w-12 h-12"
+              )}
+            >
+              <RotateCcw className={cn("w-5 h-5 text-neutral-900", isResetExpanded ? "rotate-[-180deg] transition-transform duration-500" : "")} />
+              <span className={cn(
+                "text-sm font-medium text-neutral-900 whitespace-nowrap overflow-hidden transition-all duration-300",
+                isResetExpanded ? "max-w-[100px] opacity-100" : "max-w-0 opacity-0"
+              )}>
+                Start Over
+              </span>
+            </button>
+          </div>
+        )}
 
         <div className="relative z-10 mx-auto max-w-360 space-y-8 p-8 md:p-12">
           <div className="flex flex-row items-center gap-4">
@@ -328,83 +352,100 @@ export default function DesignPage() {
           {!sessionLoaded ? (
             <p className="text-neutral-500">Loading...</p>
           ) : sessionId && originalAbsolute ? (
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
-              {/* Left Column: Image */}
-              <div className="flex flex-col gap-6">
-                <div className="flex items-center justify-between shrink-0">
-                  <p className="text-xs uppercase tracking-widest text-neutral-500 font-medium">
-                    Original Photo
-                  </p>
-                  <button
-                    type="button"
-                    onClick={resetAll}
-                    className="text-xs font-medium text-neutral-400 hover:text-neutral-900 transition-colors"
-                  >
-                    Start over
-                  </button>
+            showAfter ? (
+              // BEFORE / AFTER VIEW
+              <div className="flex flex-col items-center justify-center w-full h-[85vh] relative animate-in fade-in duration-500">
+                {/* Image Container - Flex centered, no border on container itself */}
+                <div className="relative w-full h-full flex items-center justify-center p-4">
+                   <img
+                     src={viewMode === 'original' ? displayImageUrl : (afterImageUrl || displayImageUrl)}
+                     alt={viewMode === 'original' ? "Original room" : "Curated room"}
+                     className={cn(
+                       "max-h-full max-w-full w-auto h-auto object-contain rounded-lg shadow-[0_20px_50px_-12px_rgba(0,0,0,0.25)] ring-1 ring-black/10 transition-all duration-500",
+                       viewMode === 'after' && !afterImageUrl && "opacity-50 blur-sm scale-105"
+                     )}
+                   />
+                   
+                   {/* Generating State Overlay - Centered over the image area */}
+                   {viewMode === 'after' && !afterImageUrl && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none">
+                         <div className="bg-white/90 backdrop-blur-md px-8 py-6 rounded-2xl shadow-2xl border border-white/50 flex flex-col items-center gap-4 animate-in zoom-in-95 duration-300">
+                           <div className="relative">
+                             <div className="h-12 w-12 rounded-full border-[3px] border-neutral-100 border-t-neutral-900 animate-spin" />
+                             <Sparkles className="absolute inset-0 m-auto h-5 w-5 text-neutral-900 animate-pulse" />
+                           </div>
+                           <div className="text-center space-y-1">
+                             <p className="text-sm font-semibold text-neutral-900">Redesigning your space</p>
+                             <p className="text-xs text-neutral-500">Applying your selected styles...</p>
+                           </div>
+                         </div>
+                      </div>
+                   )}
                 </div>
-                
-                <div className="relative h-full min-h-[60vh] w-full overflow-hidden rounded-xl bg-neutral-100 shadow-sm">
-                  <img
-                    src={displayImageUrl}
-                    alt="Original room"
-                    className={cn(
-                      "h-full w-full",
-                      afterImageUrl ? "object-contain bg-neutral-50" : "object-cover"
-                    )}
-                  />
-                  {!afterImageUrl && (
-                    <div className="absolute inset-0 pointer-events-none bg-linear-to-t from-black/5 to-transparent" />
-                  )}
+
+                {/* Bottom Toggle Controls */}
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20">
+                  <div className="flex items-center gap-1 bg-white/80 backdrop-blur-xl p-1.5 rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.12)] ring-1 ring-black/5">
+                    <button
+                      onClick={() => setViewMode('original')}
+                      className={cn(
+                        "px-6 py-2.5 rounded-full text-sm font-medium transition-all duration-200",
+                        viewMode === 'original' 
+                          ? "bg-neutral-900 text-white shadow-md" 
+                          : "text-neutral-500 hover:text-neutral-900 hover:bg-black/5"
+                      )}
+                    >
+                      Before
+                    </button>
+                    <button
+                      onClick={() => setViewMode('after')}
+                      className={cn(
+                        "px-6 py-2.5 rounded-full text-sm font-medium transition-all duration-200",
+                        viewMode === 'after' 
+                          ? "bg-neutral-900 text-white shadow-md" 
+                          : "text-neutral-500 hover:text-neutral-900 hover:bg-black/5"
+                      )}
+                    >
+                      After
+                    </button>
+                  </div>
                 </div>
               </div>
+            ) : (
+              // INITIAL UPLOAD & RATING VIEW
+              <section className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
+                {/* Left Column: Image */}
+                <div className="flex flex-col gap-6">
+                  <div className="flex items-center justify-between shrink-0">
+                    <p className="text-xs uppercase tracking-widest text-neutral-500 font-medium">
+                      Original Photo
+                    </p>
+                  </div>
+                  
+                  <div className="relative w-full flex items-center justify-center bg-neutral-50/50 rounded-2xl p-4 md:p-8 min-h-[50vh]">
+                    <img
+                      src={displayImageUrl}
+                      alt="Original room"
+                      className="max-h-[60vh] max-w-full w-auto h-auto object-contain rounded-lg shadow-xl ring-1 ring-black/5"
+                    />
+                  </div>
+                </div>
 
-              {/* Right Column: Rating & Breakdown */}
-              <div className="flex flex-col justify-center space-y-12 py-2">
-                {/* Status / Overall Rating Area */}
-                <div className="w-full">
-                  {busy ? (
-                    <div className="flex flex-col gap-4 animate-in fade-in duration-300 py-2">
-                      <div className="flex items-center gap-3 text-neutral-900">
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-900 border-t-transparent" />
-                        <p className="text-sm font-medium tracking-wide">{busy}</p>
-                      </div>
-                      <p className="text-xs text-neutral-500 max-w-xs leading-relaxed">
-                        Our AI is analyzing lighting, composition, and style to provide tailored recommendations.
-                      </p>
-                    </div>
-                  ) : rating ? (
-                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-                      {/* Overall Score / After Image */}
-                      {showAfter ? (
-                        <div className="flex flex-col gap-6">
-                          <div className="flex items-center justify-between shrink-0">
-                            <p className="text-xs uppercase tracking-widest text-neutral-500 font-medium">
-                              After Curation
-                            </p>
-                            <span className="text-xs uppercase tracking-widest text-neutral-400">
-                              {isCurating ? "Generating..." : "Curated"}
-                            </span>
-                          </div>
-                          
-                          <div className="relative h-full min-h-[60vh] w-full overflow-hidden rounded-xl bg-neutral-100 shadow-sm">
-                            {afterImageUrl ? (
-                              <img
-                                src={afterImageUrl}
-                                alt="Curated room"
-                                className="h-full w-full object-contain bg-neutral-50"
-                              />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center text-sm text-neutral-500">
-                                Generating...
-                              </div>
-                            )}
-                            {!afterImageUrl && (
-                              <div className="absolute inset-0 pointer-events-none bg-linear-to-t from-black/5 to-transparent" />
-                            )}
-                          </div>
+                {/* Right Column: Rating & Breakdown */}
+                <div className="flex flex-col justify-center space-y-12 py-2">
+                  <div className="w-full">
+                    {busy ? (
+                      <div className="flex flex-col gap-4 animate-in fade-in duration-300 py-2">
+                        <div className="flex items-center gap-3 text-neutral-900">
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-900 border-t-transparent" />
+                          <p className="text-sm font-medium tracking-wide">{busy}</p>
                         </div>
-                      ) : (
+                        <p className="text-xs text-neutral-500 max-w-xs leading-relaxed">
+                          Our AI is analyzing lighting, composition, and style to provide tailored recommendations.
+                        </p>
+                      </div>
+                    ) : rating ? (
+                      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
                         <div>
                           <div className="flex items-end justify-between border-b border-neutral-900 pb-4">
                             <h2 className="font-serif text-2xl text-foreground">Overall</h2>
@@ -446,12 +487,12 @@ export default function DesignPage() {
                             </div>
                           )}
                         </div>
-                      )}
-                    </div>
-                  ) : null}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            </section>
+              </section>
+            )
           ) : (
             <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
               <div className="p-4 rounded-full bg-neutral-100">
