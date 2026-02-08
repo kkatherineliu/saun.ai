@@ -397,9 +397,6 @@ export default function DesignPage() {
 
   return (
     <div className="flex h-screen bg-white overflow-hidden">
-      <div className="fixed bottom-6 left-6 z-40">
-        <Agent agents={VOICE_AGENTS} className="w-[360px] bg-white/95 backdrop-blur" />
-      </div>
       {/* Shop Sidebar (Left) */}
       <ShopSidebar
         className="h-full z-40 bg-white/95 border-r border-neutral-100 shadow-none"
@@ -412,15 +409,6 @@ export default function DesignPage() {
         onResizeEnd={handleResizeEnd}
       />
 
-      <main className="flex-1 relative overflow-auto min-w-0 transition-all duration-300 ease-in-out">
-
-
-        {/* Start Over Button - Moved to Top Right */}
-        {sessionId && (
-          <div className="absolute top-8 right-8 z-50 flex items-center gap-4">
-            <Agent agents={VOICE_AGENTS} />
-          </div>
-        )}
       <main className={cn(
         "flex-1 relative overflow-auto min-w-0",
         !isResizing && "transition-all duration-300 ease-in-out"
@@ -428,11 +416,14 @@ export default function DesignPage() {
 
 
         <div className="relative z-10 mx-auto max-w-360 space-y-8 p-8 md:p-12">
-          <div className="flex flex-row items-center gap-4">
+          <div className="flex flex-row items-center justify-between gap-4">
             <Link href="/" className="flex items-center text-sm uppercase tracking-wider text-neutral-500 hover:text-neutral-900">
               <ArrowLeft className="w-4 h-4 mr-1" />
               <span>Back</span>
             </Link>
+            <div className="flex items-center">
+              <Agent agents={VOICE_AGENTS} />
+            </div>
           </div>
 
           {!sessionLoaded ? (

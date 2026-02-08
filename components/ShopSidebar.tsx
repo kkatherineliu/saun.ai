@@ -286,6 +286,14 @@ export function ShopSidebar({
         <button className="w-full rounded-full bg-neutral-900 py-2.5 text-xs font-semibold text-white transition-all hover:bg-black disabled:opacity-50" disabled={fetchedItems.length === 0 || loading}>
           Explore Selected
         </button>
+        {onOpenChat && (
+          <button
+            onClick={onOpenChat}
+            className="mt-3 w-full rounded-full border border-neutral-200 bg-white py-2.5 text-xs font-semibold text-neutral-900 transition-all duration-300 hover:bg-neutral-50 hover:border-neutral-400 hover:shadow-md hover:scale-[1.02] active:scale-95 group"
+          >
+            <span className="group-hover:tracking-wider transition-all duration-300">Return to Curating!</span>
+          </button>
+        )}
       </div>
       </div>
     </aside>

@@ -160,16 +160,6 @@ export function ChatSidebar({
         className
       )}
     >
-      {/* Toggle Handle - Centered on border */}
-      {!isOpen && (
-        <button
-          onClick={onToggle}
-          className="absolute left-0 top-1/2 -translate-x-full -translate-y-1/2 z-50 flex h-24 w-8 items-center justify-center rounded-l-3xl border-y border-l border-neutral-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] transition-all hover:scale-105 hover:bg-neutral-50 active:scale-95 active:bg-neutral-100"
-          title="Open sidebar"
-        >
-          <ChevronLeft className="h-5 w-5 text-neutral-400" strokeWidth={2.5} />
-        </button>
-      )}
 
       <div className={cn("flex flex-col h-full w-full overflow-hidden")}>
         {/* Resize Handle */}
@@ -307,42 +297,7 @@ export function ChatSidebar({
           />
         </div>
         
-        <button
-          type="button"
-          onClick={() => {
-            if (onGenerateProducts) {
-              // Build a prompt from selected suggestions (if any) plus the textarea value
-              const selectedTitles: string[] = [];
-              // gather titles from messages' suggestions
-              for (const msg of messages) {
-                if (!msg.suggestions) continue;
-                for (const s of msg.suggestions) {
-                  if (selectedSuggestionIds.has(s.id)) selectedTitles.push(s.title);
-                }
-              }
-              const parts = [] as string[];
-              if (selectedTitles.length) parts.push(`Selected suggestions:\n- ${selectedTitles.join('\n- ')}`);
-              if (value && value.trim()) parts.push(`User notes:\n${value.trim()}`);
-              const prompt = parts.join('\n\n') || value || "";
-              const instruction =
-                "Instruction: Return ONLY a JSON array of short product names (strings) that are newly introduced by the edits below. DO NOT list items that already exist in the original photo. Return no extra text.";
 
-              const fullPrompt = prompt ? instruction + "\n\n" + prompt : instruction;
-
-              onGenerateProducts(fullPrompt).then((products) => {
-                try {
-                  onProductsGenerated?.(products);
-                } catch (e) {
-                  // ignore
-                }
-              }).catch(() => {});
-            }
-            onCurate?.();
-          }}
-          className={cn(
-            "mt-3 w-full rounded-full border border-neutral-900 bg-neutral-900 px-6 py-3",
-            "font-serif text-sm tracking-[0.2em] uppercase text-[#F3F1E7] transition-colors",
-            "hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
         {/* Curate / Shop Action Bar */}
         <div className="mt-3 flex w-full h-12 rounded-full border border-neutral-900 bg-neutral-900 overflow-hidden shadow-sm relative isolate">
           {onOpenShop && (
@@ -350,6 +305,33 @@ export function ChatSidebar({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
+                if (onGenerateProducts) {
+                  // Build a prompt from selected suggestions (if any) plus the textarea value
+                  const selectedTitles: string[] = [];
+                  // gather titles from messages' suggestions
+                  for (const msg of messages) {
+                    if (!msg.suggestions) continue;
+                    for (const s of msg.suggestions) {
+                      if (selectedSuggestionIds.has(s.id)) selectedTitles.push(s.title);
+                    }
+                  }
+                  const parts = [] as string[];
+                  if (selectedTitles.length) parts.push(`Selected suggestions:\n- ${selectedTitles.join('\n- ')}`);
+                  if (value && value.trim()) parts.push(`User notes:\n${value.trim()}`);
+                  const prompt = parts.join('\n\n') || value || "";
+                  const instruction =
+                    "Instruction: Return ONLY a JSON array of short product names (strings) that are newly introduced by the edits below. DO NOT list items that already exist in the original photo. Return no extra text.";
+    
+                  const fullPrompt = prompt ? instruction + "\n\n" + prompt : instruction;
+    
+                  onGenerateProducts(fullPrompt).then((products) => {
+                    try {
+                      onProductsGenerated?.(products);
+                    } catch (e) {
+                      // ignore
+                    }
+                  }).catch(() => {});
+                }
                 onOpenShop();
               }}
               className={cn(
