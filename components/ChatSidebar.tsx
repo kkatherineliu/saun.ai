@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { ArrowUp, GripVertical, Check, Loader2 } from "lucide-react";
+import { ArrowUp, GripVertical, Check, Loader2, ChevronLeft, ChevronRight, PanelRightClose } from "lucide-react";
 
 export type Suggestion = {
   id: string;
@@ -39,6 +39,9 @@ type ChatSidebarProps = {
   onCurate?: () => void;
   /** Whether curate is running */
   isCurating?: boolean;
+  onResetWidth?: () => void;
+  isOpen?: boolean;
+  onToggle?: () => void;
 };
 
 export function ChatSidebar({
@@ -53,6 +56,9 @@ export function ChatSidebar({
   onSubmit,
   onCurate,
   isCurating = false,
+  onResetWidth,
+  isOpen = true,
+  onToggle,
 }: ChatSidebarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
@@ -118,32 +124,38 @@ export function ChatSidebar({
   return (
     <aside
       ref={sidebarRef}
-      style={{ width }}
+      style={{ width: isOpen ? width : 0 }}
       className={cn(
-        "flex flex-col border-l border-neutral-200 bg-[#F3F1E7]/50 backdrop-blur-sm relative",
-        "h-screen sticky top-0",
+        "flex flex-col border-l border-neutral-200 bg-[#F3F1E7]/50 backdrop-blur-sm relative transition-[width] duration-300 ease-in-out",
+        "h-full shrink-0", 
         className
       )}
     >
-      {/* Resize Handle */}
-      <div
-        className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-full cursor-col-resize z-50 flex items-center justify-center group touch-none"
-        onMouseDown={(e) => {
-          e.preventDefault();
-          setIsResizing(true);
-        }}
+      {/* Toggle Handle - Centered on border */}
+      <button
+        onClick={onToggle}
+        className="absolute left-0 top-1/2 -translate-x-full -translate-y-1/2 z-50 flex h-24 w-8 items-center justify-center rounded-l-xl border-y border-l border-neutral-200 bg-white shadow-md transition-transform hover:bg-neutral-50 active:scale-95"
+        title={isOpen ? "Close sidebar" : "Open sidebar"}
       >
-        {/* Visual indicator - Round Grip Icon */}
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white border border-neutral-200 shadow-sm text-neutral-400 transition-all duration-300 group-hover:scale-110 group-hover:border-neutral-300 group-hover:text-neutral-600 group-active:scale-95">
-          <GripVertical className="h-4 w-4" />
-        </div>
-      </div>
+        {!isOpen && <ChevronLeft className="h-4 w-4 text-neutral-400" />}
+        {isOpen && <ChevronRight className="h-4 w-4 text-neutral-400" />}
+      </button>
 
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-neutral-200/50 px-6 py-4 shrink-0">
-        <span className="text-xs font-medium uppercase tracking-widest text-neutral-500">
-          {label}
-        </span>
+      <div className={cn("flex flex-col h-full w-full overflow-hidden", !isOpen && "invisible")}>
+        {/* Resize Handle */}
+        <div
+          className="absolute -left-1 top-0 w-3 h-full cursor-col-resize z-40 flex items-center justify-center group touch-none hover:bg-black/5 transition-colors"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setIsResizing(true);
+          }}
+        />
+
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-neutral-200/50 px-6 py-4 shrink-0">
+          <span className="text-xs font-medium uppercase tracking-widest text-neutral-500">
+            {label}
+          </span>
       </div>
 
       {/* Messages Area - Scrollable */}
@@ -269,6 +281,7 @@ export function ChatSidebar({
           </span>
         </button>
 
+      </div>
       </div>
     </aside>
   );

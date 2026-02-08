@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChatSidebar, type Message, type Suggestion } from "@/components/ChatSidebar";
 import Agent, { type ElevenLabsAgent } from "@/components/Agent";
+import { ShopSidebar, type ShopItem } from "@/components/ShopSidebar";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, ArrowRight, MoveRight, Sparkles, Star, RotateCcw } from "lucide-react";
 
@@ -73,6 +74,9 @@ export default function DesignPage() {
   // New State for View Mode and Reset Button
   const [viewMode, setViewMode] = useState<'original' | 'after'>('original');
   const [isResetExpanded, setIsResetExpanded] = useState(false);
+  const [activeSidebar, setActiveSidebar] = useState<'chat' | 'shop'>('chat');
+  const [isChatOpen, setIsChatOpen] = useState(true);
+  const [isShopOpen, setIsShopOpen] = useState(false);
   const router = useRouter();
 
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -307,6 +311,22 @@ export default function DesignPage() {
         <div className="fixed bottom-6 left-6 z-40">
           <Agent agents={VOICE_AGENTS} className="w-[360px] bg-white/95 backdrop-blur" />
         </div>
+    <div className="flex h-screen bg-white overflow-hidden">
+      {/* Shop Sidebar (Left) */}
+      <ShopSidebar
+        className="h-full z-40 bg-white/95 border-r border-neutral-100 shadow-none"
+        onAddItem={(name) => console.log("Add item:", name)}
+        onResetWidth={() => {}}
+        isOpen={isShopOpen}
+        onToggle={() => {
+          if (!isShopOpen) {
+            setIsShopOpen(true);
+            setIsChatOpen(false);
+          }
+        }}
+      />
+
+      <main className="flex-1 relative overflow-auto min-w-0 transition-all duration-300 ease-in-out">
 
 
         {/* Start Over Button - Moved to Top Right */}
@@ -513,8 +533,9 @@ export default function DesignPage() {
         </div>
       </main>
 
+      {/* Chat Sidebar (Right) */}
       <ChatSidebar
-        className="bg-white/95 border-l border-neutral-100 shadow-[0_0_40px_rgba(0,0,0,0.03)]"
+        className="h-full z-40 bg-white/95 border-l border-neutral-100 shadow-none"
         value={userExtra}
         onChange={setUserExtra}
         placeholder="Extra modifications..."
@@ -524,6 +545,14 @@ export default function DesignPage() {
         onSubmit={handleSubmitMessage}
         onCurate={generate}
         isCurating={isCurating}
+        onResetWidth={() => {}}
+        isOpen={isChatOpen}
+        onToggle={() => {
+          if (!isChatOpen) {
+            setIsChatOpen(true);
+            setIsShopOpen(false);
+          }
+        }}
       />
     </div>
   );
