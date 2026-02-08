@@ -555,5 +555,7 @@ export default function DesignPage() {
         }}
       />
     </div>
+      </main>
+    </div>
   );
 }
