@@ -77,6 +77,7 @@ export default function DesignPage() {
   const [activeSidebar, setActiveSidebar] = useState<'chat' | 'shop'>('chat');
   const [isChatOpen, setIsChatOpen] = useState(true);
   const [isShopOpen, setIsShopOpen] = useState(false);
+  const [shopItems, setShopItems] = useState<ShopItem[] | undefined>(undefined);
   const [isResizing, setIsResizing] = useState(false);
   const router = useRouter();
 
@@ -315,6 +316,78 @@ export default function DesignPage() {
     }
   }, [additionalChanges, numVariations, rating, selectedIds, sessionId, startPolling, userExtra]);
 
+  // Product generation: try backend endpoint first, otherwise fallback to simple parsing
+  const onGenerateProducts = useCallback(async (prompt: string): Promise<string[]> => {
+    try {
+      const res = await fetch(`${apiBase}/api/generate-products`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.products)) return data.products;
+      }
+    } catch (e) {
+      // ignore and fallback
+    }
+
+    // Fallback: split lines/commas and return trimmed guesses
+    const parts = prompt
+      .split(/\r?\n|,|;|\|/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    // dedupe and limit
+    return Array.from(new Set(parts)).slice(0, 12);
+  }, []);
+
+  const handleProductsGenerated = useCallback(async (products: string[]) => {
+    if (!products || products.length === 0) return;
+
+    // Query backend batch_search to enrich products with SERP info
+    try {
+      const q = products.join(",");
+      const res = await fetch(`${apiBase}/api/batch_search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+
+      const results = Array.isArray(data.results) ? data.results : [];
+
+      setShopItems((prev) => {
+        const next: ShopItem[] = prev ? [...prev] : [];
+        const existing = new Set(next.map((it) => it.name.toLowerCase()));
+        const now = Date.now();
+        results.forEach((r: any, i: number) => {
+          const title = (r.result && r.result.title) ? r.result.title : r.query;
+          const name = title || r.query;
+          if (existing.has(name.toLowerCase())) return;
+          existing.add(name.toLowerCase());
+          next.push({
+            id: `${now}-${i}`,
+            name,
+            price: r.result?.price ?? "TBD",
+            image: r.result?.image,
+            link: r.result?.link,
+            category: "Suggested",
+          });
+        });
+        return next;
+      });
+
+      setIsShopOpen(true);
+    } catch (e) {
+      // Fallback: just add names
+      setShopItems((prev) => {
+        const next: ShopItem[] = prev ? [...prev] : [];
+        const now = Date.now();
+        products.forEach((p, i) => {
+          next.push({ id: `${now}-${i}`, name: p, price: "TBD", category: "Suggested" });
+        });
+        return next;
+      });
+      setIsShopOpen(true);
+    }
+  }, []);
+
   useEffect(() => {
     return () => {
       if (pollTimer.current) clearInterval(pollTimer.current);
@@ -330,7 +403,8 @@ export default function DesignPage() {
       {/* Shop Sidebar (Left) */}
       <ShopSidebar
         className="h-full z-40 bg-white/95 border-r border-neutral-100 shadow-none"
-        onAddItem={(name) => console.log("Add item:", name)}
+        items={shopItems}
+        onAddItem={(name) => setShopItems((prev) => [...(prev ?? []), { id: `${Date.now()}`, name, price: "TBD" }])}
         onResetWidth={() => {}}
         isOpen={isShopOpen}
         onOpenChat={openChat}
@@ -540,6 +614,8 @@ export default function DesignPage() {
         onSubmit={handleSubmitMessage}
         onCurate={generate}
         isCurating={isCurating}
+        onGenerateProducts={onGenerateProducts}
+        onProductsGenerated={handleProductsGenerated}
         onResetWidth={() => {}}
         isOpen={isChatOpen}
         onOpenShop={afterImageUrl ? openShop : undefined}

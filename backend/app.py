@@ -2,10 +2,19 @@ import os
 import io
 import json
 import uuid
-import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time as _time
+import requests
+from PIL import Image
+from dotenv import load_dotenv
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
+from sqlalchemy import create_engine, Column, String, DateTime, Text, ForeignKey
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 import base64
 import hashlib
 import threading
+import re
 from datetime import datetime
 from typing import Any, Dict, Optional, List
 
@@ -101,7 +110,7 @@ _ip_hits: Dict[str, List[float]] = {}
 _ip_lock = threading.Lock()
 
 def check_rate_limit(ip: str) -> bool:
-    now = time.time()
+    now = _time.time()
     with _ip_lock:
         hits = _ip_hits.get(ip, [])
         hits = [t for t in hits if now - t < _RATE_WINDOW_SEC]
@@ -664,6 +673,173 @@ def generate(session_id: str):
         return jsonify({"job_id": job_id, "status": "queued"})
     finally:
         db.close()
+
+
+@app.post("/api/generate-products")
+def generate_products():
+    ip = client_ip()
+    if not check_rate_limit(ip):
+        return jsonify({"error": {"code": "rate_limited", "message": "Too many requests"}}), 429
+
+    body = request.get_json(silent=True) or {}
+    prompt = body.get("prompt", "")
+    if not prompt or not isinstance(prompt, str):
+        return jsonify({"error": {"code": "bad_request", "message": "Missing prompt"}}), 400
+
+    # Build a concise instruction to return a JSON array of descriptive product names
+    instruction = (
+        "Given the following edit prompt for an interior design image, produce a JSON array (only) of up to 12 products"
+        " that would likely appear in the edited image. For each product, provide a brief but descriptive name (2-5 words)"
+        " that includes style/material details (e.g., 'Modern Beige Linen Sofa', 'Minimalist Chrome Floor Lamp')."
+        " Return only a JSON array of product name strings, no extra text."
+        f"\n\nPrompt:\n{prompt}"
+    )
+
+    try:
+        payload = {
+            "contents": [{"parts": [{"text": instruction}]}],
+            "generationConfig": {"responseMimeType": "application/json", "temperature": 0.5}
+        }
+        resp = gemini_generate_content(GEMINI_RATING_MODEL, payload)
+        text = extract_text_from_gemini(resp)
+        if text:
+            try:
+                data = json.loads(text)
+                if isinstance(data, list):
+                    # normalize strings
+                    products = [str(x).strip() for x in data if isinstance(x, (str, int, float)) and str(x).strip()]
+                    return jsonify({"products": products})
+            except Exception:
+                # fall through to fallback parsing
+                pass
+    except requests.HTTPError as e:
+        # let fallback handle
+        pass
+    except Exception:
+        pass
+
+    # Fallback: naive extraction from prompt (split punctuation/newlines)
+    parts = [p.strip() for p in re.split(r"\r?\n|,|;|\||\\/", prompt) if p.strip()]
+    products = list(dict.fromkeys(parts))[:12]
+    return jsonify({"products": products})
+
+
+# ----------------------------
+# SerpApi proxy endpoints
+# ----------------------------
+SERPAPI_KEY = os.getenv("SERPAPI_KEY")
+SERP_CACHE_TTL = int(os.getenv("SERP_CACHE_TTL", "60"))
+_serp_cache = {}
+
+def _serp_cache_get(key: str):
+    item = _serp_cache.get(key)
+    if not item:
+        return None
+    expires_at, payload = item
+    if _time.time() > expires_at:
+        _serp_cache.pop(key, None)
+        return None
+    return payload
+
+def _serp_cache_set(key: str, payload):
+    _serp_cache[key] = (_time.time() + SERP_CACHE_TTL, payload)
+
+def _fetch_serp_one(query: str):
+    key = query.lower()
+    cached = _serp_cache_get(key)
+    if cached:
+        return cached
+
+    if not SERPAPI_KEY:
+        raise RuntimeError("Missing SERPAPI_KEY env var")
+
+    params = {
+        "engine": "google_shopping",
+        "q": query,
+        "api_key": SERPAPI_KEY,
+    }
+
+    r = requests.get("https://serpapi.com/search.json", params=params, timeout=20)
+    r.raise_for_status()
+    data = r.json()
+
+    results = data.get("shopping_results") or []
+    if not results:
+        payload = {"query": query, "result": None}
+        _serp_cache_set(key, payload)
+        return payload
+
+    top = results[0]
+    payload = {
+        "query": query,
+        "result": {
+            "title": top.get("title"),
+            "link": top.get("link") or top.get("product_link"),
+            "image": top.get("thumbnail"),
+            "price": top.get("price"),
+            "source": top.get("source"),
+            "rating": top.get("rating"),
+            "reviews": top.get("reviews"),
+        },
+    }
+    _serp_cache_set(key, payload)
+    return payload
+
+
+@app.get("/api/batch_search")
+def batch_search():
+    raw = (request.args.get("q") or "").strip()
+    if not raw:
+        return jsonify({"error": "Missing q"}), 400
+
+    parts = [p.strip() for p in raw.split(",")]
+    parts = [p for p in parts if p]
+
+    # de-dupe preserving order
+    seen = set()
+    queries = []
+    for p in parts:
+        k = p.lower()
+        if k not in seen:
+            seen.add(k)
+            queries.append(p)
+
+    MAX_ITEMS = 12
+    queries = queries[:MAX_ITEMS]
+
+    if not queries:
+        return jsonify({"queries": [], "results": []})
+
+    MAX_WORKERS = min(4, len(queries))
+    out_by_query = {}
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
+        future_map = {ex.submit(_fetch_serp_one, q): q for q in queries}
+        for fut in as_completed(future_map):
+            q = future_map[fut]
+            try:
+                out_by_query[q] = fut.result()
+            except Exception as e:
+                out_by_query[q] = {"query": q, "result": None, "error": str(e)}
+
+    results = [out_by_query[q] for q in queries]
+    return jsonify({"queries": queries, "results": results})
+
+
+@app.get("/api/search")
+def search():
+    q = (request.args.get("q") or "").strip()
+    if not q:
+        return jsonify({"error": "Missing q"}), 400
+
+    cached = _serp_cache_get(q.lower())
+    if cached:
+        return jsonify(cached)
+
+    try:
+        payload = _fetch_serp_one(q)
+        return jsonify(payload)
+    except Exception as e:
+        return jsonify({"query": q, "result": None, "error": str(e)})
 
 @app.get("/api/jobs/<job_id>")
 def job_status(job_id: str):
