@@ -1,22 +1,22 @@
 # devpost link: [CURAiTE](https://devpost.com/software/saun-ai)
 
 
-Most people don’t lack taste — they lack tools.
+Most people don’t lack taste. They lack tools.
 
 We all have a _vision_ for how our space should feel, but there’s a huge gap between imagining a room and confidently designing it. Sometimes, Pinterest is overwhelming, furniture is expensive, and you can’t actually see if your ideas will work together.
 
-CURAiTE bridges that gap by acting as your personal interior design team — helping you visualize, refine, and bring your vision to life; curating the perfect space for any vibe.
+CURAiTE bridges that gap by acting as your personal interior design team, helping you visualize, refine, and bring your vision to life; curating the perfect space for any vibe.
 
 ## 💡 What It Does
-- Gives smart room suggestions around feng shui, lighting, colour, and layout
-- Lets you chat with an AI interior designer to fine-tune your space
-- Recommends furniture pieces you can actually buy
+- Gives smart room suggestions around cleanliness, organization, colour harmony, lighting, spacing and feng shui (the practice of arranging pieces in a living or workspace to create balance with the natural world)
+- Lets you chat with an AI interior designer to fine-tune your space and ideas
+- Recommends furniture pieces based off the AI recommendations you can actually buy
 - Talk to a feng shui master to understand your room’s harmony
 - Iterates on previous designs so each version builds on the last
 
 ## 🛠️ How We Built It
 **Gemini API** for image generation + interior design agents
-**ElevenLabs** for live voice chats with designers and feng shui experts
+**ElevenLabs** for live voice agents with designers and feng shui experts
 *SERP API* for finding furniture online
 Frontend: Next.js, Tailwind CSS, shadcn
 Backend: Flask, SQLite
