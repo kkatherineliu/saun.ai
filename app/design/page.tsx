@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChatSidebar, type Message, type Suggestion } from "@/components/ChatSidebar";
 import { cn } from "@/lib/utils";
-import { ArrowRight, MoveRight, Sparkles, Star } from "lucide-react";
+import { ArrowLeft, ArrowRight, MoveRight, Sparkles, Star } from "lucide-react";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001";
 const DESIGN_SESSION_KEY = "saun-design-session";
@@ -38,68 +38,14 @@ function toTitleCase(value: string) {
     .replaceAll("_", " ")
     .replace(/\b\w/g, (m) => m.toUpperCase());
 }
-const Assets = () => {
-  return (
-    <section className="mt-32 w-full max-w-5xl pt-24 border-t border-neutral-300/50 relative z-10">
-      <div className="flex flex-col md:flex-row justify-between items-start gap-12">
-        <div className="space-y-4">
-          <h3 className="font-serif text-3xl">Design Elements</h3>
-          <p className="text-neutral-500 text-sm max-w-xs">
-            Reusable components and typography styles matching the curated aesthetic.
-          </p>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 w-full max-w-2xl">
-          {/* Buttons */}
-          <div className="space-y-6">
-            <p className="text-xs uppercase tracking-widest text-neutral-400 font-medium">Buttons</p>
-
-            <div className="flex flex-col gap-4 items-start">
-              {/* Primary Button */}
-              <button className="group relative flex items-center justify-between gap-4 px-8 py-4 bg-[#121212] text-[#F3F1E7] rounded-none hover:bg-neutral-800 transition-all duration-300 w-full md:w-auto min-w-[200px]">
-                <span className="font-serif text-lg tracking-wide">Get Started</span>
-                <MoveRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
-              </button>
-
-              {/* Secondary Button */}
-              <button className="group flex items-center gap-3 px-6 py-3 border border-[#121212] text-[#121212] rounded-full hover:bg-[#121212] hover:text-[#F3F1E7] transition-all duration-300">
-                <span className="text-sm font-medium tracking-wide">View Gallery</span>
-              </button>
-
-              {/* Text Link */}
-              <button className="group flex items-center gap-2 text-[#121212] hover:opacity-70 transition-opacity">
-                <span className="border-b border-black pb-0.5 text-sm uppercase tracking-widest">Learn More</span>
-                <ArrowRight className="w-4 h-4 -rotate-45 group-hover:rotate-0 transition-transform duration-300" />
-              </button>
-            </div>
-          </div>
-
-          {/* Typography & Cards */}
-          <div className="space-y-6">
-            <p className="text-xs uppercase tracking-widest text-neutral-400 font-medium">Typography & Surface</p>
-
-            <div className="p-8 bg-white border border-neutral-100 shadow-sm hover:shadow-md transition-shadow duration-300">
-              <div className="flex items-center gap-2 mb-4 text-neutral-400">
-                <Sparkles className="w-4 h-4" />
-                <span className="text-xs uppercase tracking-wider">Feature Card</span>
-              </div>
-              <h4 className="font-serif text-2xl mb-2">Modern Minimalist</h4>
-              <p className="text-neutral-500 text-sm leading-relaxed">
-                Clean lines, neutral palette, and functional furniture design.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-};
 
 export default function DesignPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [originalUrl, setOriginalUrl] = useState<string | null>(null);
   const [rating, setRating] = useState<RatingResult | null>(null);
+  const [isCurating, setIsCurating] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [userExtra, setUserExtra] = useState("");
   const [additionalChanges, setAdditionalChanges] = useState("");
@@ -181,7 +127,7 @@ export default function DesignPage() {
         {
           id: Date.now().toString(),
           role: "assistant",
-          content: `I've analyzed your room! It has a score of ${rating.overall_score}/10. ${rating.summary}\n\nHere are my suggestions for improvement:`,
+          content: `I've analyzed your room! ${rating.summary}\n\nHere are my suggestions for improvement:`,
           suggestions: rating.suggestions ?? [],
         },
       ];
@@ -199,6 +145,9 @@ export default function DesignPage() {
     () => generated.map((u) => (u.startsWith("http") ? u : `${apiBase}${u}`)),
     [generated]
   );
+  const afterImageUrl = generatedAbsolute[0] ?? null;
+  const showAfter =
+    isCurating || job?.status === "pending" || job?.status === "running" || !!afterImageUrl;
 
   const resetAll = useCallback(() => {
     if (typeof window !== "undefined") sessionStorage.removeItem(DESIGN_SESSION_KEY);
@@ -206,7 +155,9 @@ export default function DesignPage() {
     setSessionId(null);
     setOriginalUrl(null);
     setRating(null);
+    setIsCurating(false);
     setSelectedIds(new Set());
+    setMessages([]);
     setUserExtra("");
     setAdditionalChanges("");
     setNumVariations(2);
@@ -214,6 +165,31 @@ export default function DesignPage() {
     setGenerated([]);
     hasAutoRatedRef.current = false;
   }, []);
+
+  const toggleSuggestion = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSubmitMessage = useCallback(
+    (value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) return;
+      setMessages((prev) => [
+        ...prev,
+        { id: Date.now().toString(), role: "user", content: trimmed },
+      ]);
+      setUserExtra("");
+    },
+    []
+  );
 
   const rate = useCallback(async () => {
     if (!sessionId) return alert("Upload first.");
@@ -244,9 +220,11 @@ export default function DesignPage() {
         setJob(data);
         if (data.status === "done") {
           setGenerated(data.generated_images ?? []);
+          setIsCurating(false);
           if (pollTimer.current) clearInterval(pollTimer.current);
           pollTimer.current = null;
         } else if (data.status === "error") {
+          setIsCurating(false);
           if (pollTimer.current) clearInterval(pollTimer.current);
           pollTimer.current = null;
         }
@@ -282,6 +260,7 @@ export default function DesignPage() {
     );
 
     setBusy("Starting generation...");
+    setIsCurating(true);
     try {
       const res = await fetch(`${apiBase}/api/sessions/${sessionId}/generate`, {
         method: "POST",
@@ -304,8 +283,12 @@ export default function DesignPage() {
         error: null,
       });
       setGenerated([]);
+      if (data.status === "done") {
+        setIsCurating(false);
+      }
       startPolling(data.job_id as string);
     } catch (e: unknown) {
+      setIsCurating(false);
       alert(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
@@ -320,23 +303,35 @@ export default function DesignPage() {
 
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <main className="flex-1 overflow-auto">
-        <div className="mx-auto max-w-2xl space-y-8 p-8 md:p-12">
-          <div>
-            <Link href="/" className="text-sm uppercase tracking-wider text-neutral-500 hover:text-neutral-900">
-              Back
+    <div className="flex min-h-screen bg-[#FDFBF7]">
+      <main className="flex-1 overflow-auto relative">
+        {/* Decorative Background Curve */}
+        <div className="fixed bottom-0 left-0 w-[40vw] h-[40vh] pointer-events-none z-0 opacity-10">
+           <svg className="w-full h-full text-black" viewBox="0 0 100 100" preserveAspectRatio="none">
+             <path 
+               d="M0,100 C30,40 60,60 100,80" 
+               fill="none" 
+               stroke="currentColor" 
+               strokeWidth="1.0" 
+             />
+           </svg>
+        </div>
+
+        <div className="relative z-10 mx-auto max-w-360 space-y-8 p-8 md:p-12">
+          <div className="flex flex-row items-center gap-4">
+            <Link href="/" className="flex items-center text-sm uppercase tracking-wider text-neutral-500 hover:text-neutral-900">
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              <span>Back</span>
             </Link>
           </div>
-          <h1 className="font-serif text-4xl tracking-tight text-foreground">Design</h1>
 
           {!sessionLoaded ? (
             <p className="text-neutral-500">Loading...</p>
-          ) : !sessionId || !originalAbsolute ? (
-            <section className="">
-              {/* Left Column: Image + Overall/Loading */}
-              <div className="lg:col-span-5 space-y-6 sticky top-8">
-                <div className="flex items-center justify-between">
+          ) : sessionId && originalAbsolute ? (
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
+              {/* Left Column: Image */}
+              <div className="flex flex-col gap-6">
+                <div className="flex items-center justify-between shrink-0">
                   <p className="text-xs uppercase tracking-widest text-neutral-500 font-medium">
                     Original Photo
                   </p>
@@ -349,17 +344,25 @@ export default function DesignPage() {
                   </button>
                 </div>
                 
-                <div className="relative aspect-3/4 w-full overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-100 shadow-sm">
+                <div className="relative h-full min-h-[60vh] w-full overflow-hidden rounded-xl bg-neutral-100 shadow-sm">
                   <img
                     src={displayImageUrl}
                     alt="Original room"
-                    className="h-full w-full object-cover"
+                    className={cn(
+                      "h-full w-full",
+                      afterImageUrl ? "object-contain bg-neutral-50" : "object-cover"
+                    )}
                   />
-                  <div className="absolute inset-0 pointer-events-none bg-linear-to-t from-black/5 to-transparent" />
+                  {!afterImageUrl && (
+                    <div className="absolute inset-0 pointer-events-none bg-linear-to-t from-black/5 to-transparent" />
+                  )}
                 </div>
+              </div>
 
+              {/* Right Column: Rating & Breakdown */}
+              <div className="flex flex-col justify-center space-y-12 py-2">
                 {/* Status / Overall Rating Area */}
-                <div className="min-h-[120px]">
+                <div className="w-full">
                   {busy ? (
                     <div className="flex flex-col gap-4 animate-in fade-in duration-300 py-2">
                       <div className="flex items-center gap-3 text-neutral-900">
@@ -371,69 +374,85 @@ export default function DesignPage() {
                       </p>
                     </div>
                   ) : rating ? (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
-                      <div>
-                        <p className="text-xs uppercase tracking-widest text-neutral-400 mb-2">Overall Score</p>
-                        <div className="flex items-baseline gap-3">
-                          <span className="font-serif text-6xl text-foreground tracking-tight">
-                            {rating.overall_score}
-                          </span>
-                          <span className="text-2xl text-neutral-300 font-light">/10</span>
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                      {/* Overall Score / After Image */}
+                      {showAfter ? (
+                        <div className="flex flex-col gap-6">
+                          <div className="flex items-center justify-between shrink-0">
+                            <p className="text-xs uppercase tracking-widest text-neutral-500 font-medium">
+                              After Curation
+                            </p>
+                            <span className="text-xs uppercase tracking-widest text-neutral-400">
+                              {isCurating ? "Generating..." : "Curated"}
+                            </span>
+                          </div>
+                          
+                          <div className="relative h-full min-h-[60vh] w-full overflow-hidden rounded-xl bg-neutral-100 shadow-sm">
+                            {afterImageUrl ? (
+                              <img
+                                src={afterImageUrl}
+                                alt="Curated room"
+                                className="h-full w-full object-contain bg-neutral-50"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-sm text-neutral-500">
+                                Generating...
+                              </div>
+                            )}
+                            {!afterImageUrl && (
+                              <div className="absolute inset-0 pointer-events-none bg-linear-to-t from-black/5 to-transparent" />
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-100">
-                        <div
-                          className="h-full rounded-full bg-neutral-900 transition-all duration-1000 ease-out"
-                          style={{ width: `${Math.min(Math.max(rating.overall_score * 10, 0), 100)}%` }}
-                        />
-                      </div>
-                      
-                      <p className="text-base leading-relaxed text-neutral-600 border-l-2 border-neutral-200 pl-4 py-1">
-                        {rating.summary}
-                      </p>
+                      ) : (
+                        <div>
+                          <div className="flex items-end justify-between border-b border-neutral-900 pb-4">
+                            <h2 className="font-serif text-2xl text-foreground">Overall</h2>
+                            <div className="flex items-baseline gap-1">
+                              <span className="font-serif text-5xl text-foreground tracking-tight">
+                                {rating.overall_score}
+                              </span>
+                              <span className="text-xl text-neutral-400 font-light">/10</span>
+                            </div>
+                          </div>
+                          {rating.breakdown && Object.keys(rating.breakdown).length > 0 && (
+                            <div className="space-y-4 pt-4">
+                              <div className="grid grid-cols-1 gap-y-4">
+                                {Object.entries(rating.breakdown).map(([k, v]) => (
+                                  <div
+                                    key={k}
+                                    className="group flex items-center justify-between py-3 rounded-lg px-4 hover:bg-neutral-100 transition-colors"
+                                  >
+                                    <p className="text-xs font-medium uppercase tracking-widest text-neutral-500 group-hover:text-neutral-900 transition-colors">
+                                      {k.replaceAll("_", " ")}
+                                    </p>
+                                    <div className="flex items-center gap-1">
+                                      {Array.from({ length: 5 }).map((_, i) => (
+                                        <Star
+                                          key={i}
+                                          className={cn(
+                                            "w-4 h-4 transition-all duration-300",
+                                            i < Math.round(v / 2)
+                                              ? "fill-neutral-900 text-neutral-900"
+                                              : "fill-transparent text-neutral-300 group-hover:text-neutral-400"
+                                          )}
+                                          strokeWidth={1.5}
+                                        />
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ) : null}
                 </div>
               </div>
-
-              {/* Right Column: Breakdown Grid */}
-              <div className="lg:col-span-7">
-                {rating?.breakdown && Object.keys(rating.breakdown).length > 0 ? (
-                  <div className="bg-white rounded-[2rem] p-8 md:p-10 border border-neutral-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
-                     <h3 className="mb-10 font-serif text-2xl text-foreground">Analysis Breakdown</h3>
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-12">
-                      {Object.entries(rating.breakdown).map(([k, v]) => (
-                        <div key={k} className="group flex flex-col gap-3">
-                          <p className="text-xs font-semibold uppercase tracking-widest text-neutral-400 group-hover:text-neutral-900 transition-colors">
-                            {k.replaceAll("_", " ")}
-                          </p>
-                          <div className="flex items-center gap-1.5">
-                            {Array.from({ length: 5 }).map((_, i) => (
-                              <Star
-                                key={i}
-                                className={cn(
-                                  "w-6 h-6 transition-all duration-300",
-                                  i < Math.round(v / 2)
-                                    ? "fill-neutral-900 text-neutral-900"
-                                    : "fill-neutral-100 text-neutral-100 group-hover:fill-neutral-200 group-hover:text-neutral-200"
-                                )}
-                                strokeWidth={1.5}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : !busy && (
-                  <div className="h-full flex items-center justify-center p-12 text-neutral-300 border-2 border-dashed border-neutral-100 rounded-3xl">
-                    <p>Details will appear here...</p>
-                  </div>
-                )}
-              </div>
             </section>
-          ) : sessionLoaded ? (
+          ) : (
             <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
               <div className="p-4 rounded-full bg-neutral-100">
                 <Sparkles className="w-8 h-8 text-neutral-400" />
@@ -452,15 +471,21 @@ export default function DesignPage() {
                 <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
-          ) : null}
+          )}
         </div>
       </main>
 
       <ChatSidebar
+        className="bg-white/95 border-l border-neutral-100 shadow-[0_0_40px_rgba(0,0,0,0.03)]"
         value={userExtra}
         onChange={setUserExtra}
-        placeholder='e.g. "Scandinavian minimal, warm natural light"'
-        label="Extra style prompt (optional)"
+        placeholder="Extra modifications..."
+        messages={messages}
+        selectedSuggestionIds={selectedIds}
+        onToggleSuggestion={toggleSuggestion}
+        onSubmit={handleSubmitMessage}
+        onCurate={generate}
+        isCurating={isCurating}
       />
     </div>
   );

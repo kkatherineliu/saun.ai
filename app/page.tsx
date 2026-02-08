@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type SubmitEvent } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Upload, ArrowRight, X } from "lucide-react";
+import { Upload, ArrowRight, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const sampleRooms = [
@@ -271,8 +271,14 @@ export default function Home() {
               type="submit"
               className="flex items-center gap-2 px-6 py-2 bg-neutral-900 text-white rounded-full font-medium text-xs hover:bg-black hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl"
             >
-              {loading ? <span className="tracking-wider">Loading...</span> : <span className="tracking-wider">Start Design</span>}
-              <ArrowRight className="w-4 h-4" />
+              {loading ? <>
+                <span className="tracking-wider">Loading...</span> 
+                <Loader2 className="w-4 h-4 animate-spin" />
+                </> : <>
+                <span className="tracking-wider">Start Design</span> 
+                <ArrowRight className="w-4 h-4" />
+              </>}
+              
             </button>
           )}
         

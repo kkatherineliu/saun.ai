@@ -22,8 +22,6 @@ export const metadata: Metadata = {
   description: "AI-driven interior design",
 };
 
-import { FileProvider } from "@/lib/file-context";
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -34,9 +32,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} antialiased`}
       >
-        <FileProvider>
           {children}
-        </FileProvider>
       </body>
     </html>
   );
